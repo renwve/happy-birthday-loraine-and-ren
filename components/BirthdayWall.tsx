@@ -13,7 +13,12 @@ type Photo = {
   from: string | null;
 };
 
-const PALETTE = ['#36539a', '#addae8', '#c6a97c', '#243e8b'];
+const PALETTE = [
+  '#36539a',
+  '#addae8',
+  '#c6a97c',
+  '#243e8b',
+];
 
 function Star({ fill }: { fill: string }) {
   return (
@@ -99,13 +104,21 @@ function Motif({
 }
 
 export default function BirthdayWall() {
-  const [attendee, setAttendee] = useState<string | null>(null);
+  const [attendee, setAttendee] =
+    useState<string | null>(null);
+
   const [photos, setPhotos] = useState<Photo[]>([]);
 
   const [open, setOpen] = useState(false);
 
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  /*
+   * MULTIPLE FILE STATE
+   */
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>(
+    []
+  );
+
   const [caption, setCaption] = useState('');
 
   const [message, setMessage] = useState('');
@@ -124,10 +137,14 @@ export default function BirthdayWall() {
         setAttendee(json.attendee);
         setPhotos(json.photos || []);
       } else {
-        setMessage(json.error || 'Could not load the wall.');
+        setMessage(
+          json.error || 'Could not load the wall.'
+        );
       }
     } catch {
-      setMessage('The wall is not reachable right now.');
+      setMessage(
+        'The wall is not reachable right now.'
+      );
     }
   }
 
@@ -139,36 +156,84 @@ export default function BirthdayWall() {
     return () => clearInterval(interval);
   }, []);
 
+  /*
+   * Clean up object URLs when the component unmounts.
+   */
   useEffect(() => {
     return () => {
-      if (preview) {
+      previews.forEach((preview) => {
         URL.revokeObjectURL(preview);
-      }
+      });
     };
-  }, [preview]);
+  }, [previews]);
 
-  const mine = useMemo(
-    () => photos.filter((photo) => photo.from === attendee),
-    [photos, attendee]
-  );
+  /*
+   * Group the photos by attendee.
+   */
+  const photosByAttendee = useMemo(() => {
+    const grouped: Record<string, Photo[]> = {};
+
+    for (const photo of photos) {
+      const name = photo.from || 'unknown guest';
+
+      if (!grouped[name]) {
+        grouped[name] = [];
+      }
+
+      grouped[name].push(photo);
+    }
+
+    return grouped;
+  }, [photos]);
+
+  /*
+   * Keep the configured attendee order.
+   *
+   * This means the wall follows the same order as
+   * your ATTENDEES array.
+   */
+  const attendeeSections = useMemo(() => {
+    const configured = ATTENDEES.filter(
+      (name) => photosByAttendee[name]?.length
+    );
+    
+const unknown = Object.keys(
+  photosByAttendee
+).filter(
+  (name) => !ATTENDEES.some(
+    (attendeeName) => attendeeName === name
+  )
+);
+
+    return [
+      ...configured,
+      ...unknown,
+    ];
+  }, [photosByAttendee]);
 
   async function choose(name: string) {
     setMessage('');
 
     try {
-      const response = await fetch('/api/attendee/select', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ name }),
-      });
+      const response = await fetch(
+        '/api/attendee/select',
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ name }),
+        }
+      );
 
-      const json = await response.json().catch(() => ({}));
+      const json = await response
+        .json()
+        .catch(() => ({}));
 
       if (!response.ok) {
         setMessage(
-          json.error || 'Could not choose attendee. Please try again.'
+          json.error ||
+            'Could not choose attendee. Please try again.'
         );
         return;
       }
@@ -177,68 +242,178 @@ export default function BirthdayWall() {
 
       await load();
     } catch (error) {
-      console.error('Guest selection error:', error);
+      console.error(
+        'Guest selection error:',
+        error
+      );
 
-      setMessage('Could not choose your guest. Please try again.');
+      setMessage(
+        'Could not choose your guest. Please try again.'
+      );
     }
   }
 
   function resetModal() {
     setOpen(false);
-    setFile(null);
+    setFiles([]);
     setCaption('');
     setMessage('');
 
-    if (preview) {
+    previews.forEach((preview) => {
       URL.revokeObjectURL(preview);
-    }
+    });
 
-    setPreview(null);
+    setPreviews([]);
   }
 
-  function pick(selectedFile: File | null) {
-    if (!selectedFile) return;
+  /*
+   * Add multiple selected files.
+   */
+  function pick(
+    selectedFiles: FileList | null
+  ) {
+    if (!selectedFiles) return;
 
-    if (!selectedFile.type.startsWith('image/')) {
-      setMessage('That file is not a picture. Try a JPG or PNG.');
+    const incoming = Array.from(selectedFiles);
+
+    if (incoming.length === 0) {
       return;
     }
 
-    if (preview) {
-      URL.revokeObjectURL(preview);
+    /*
+     * Limit the number of photos in one batch.
+     */
+    if (incoming.length > 30) {
+      setMessage(
+        'You can choose up to 30 photos at once.'
+      );
+      return;
     }
 
-    setFile(selectedFile);
-    setPreview(URL.createObjectURL(selectedFile));
+    /*
+     * Validate every file before adding it.
+     */
+    for (const file of incoming) {
+      if (!file.type.startsWith('image/')) {
+        setMessage(
+          `"${file.name}" is not a picture.`
+        );
+        return;
+      }
+
+      if (file.size > 15 * 1024 * 1024) {
+        setMessage(
+          `"${file.name}" is too large. Keep photos under 15 MB.`
+        );
+        return;
+      }
+    }
+
+    /*
+     * Remove previous preview URLs.
+     */
+    previews.forEach((preview) => {
+      URL.revokeObjectURL(preview);
+    });
+
+    const nextFiles = incoming;
+    const nextPreviews = nextFiles.map(
+      (file) => URL.createObjectURL(file)
+    );
+
+    setFiles(nextFiles);
+    setPreviews(nextPreviews);
     setMessage('');
   }
 
+  /*
+   * Remove one photo before uploading.
+   */
+  function removeSelected(index: number) {
+    const nextFiles = files.filter(
+      (_, fileIndex) => fileIndex !== index
+    );
+
+    const nextPreviews = previews.filter(
+      (_, previewIndex) =>
+        previewIndex !== index
+    );
+
+    const removedPreview = previews[index];
+
+    if (removedPreview) {
+      URL.revokeObjectURL(removedPreview);
+    }
+
+    setFiles(nextFiles);
+    setPreviews(nextPreviews);
+  }
+
+  /*
+   * Upload every selected photo.
+   */
   async function upload() {
-    if (!file) return;
+    if (files.length === 0) {
+      setMessage(
+        'Choose at least one photo first.'
+      );
+      return;
+    }
+
+    if (!attendee) {
+      setMessage(
+        'Choose an attendee first.'
+      );
+      return;
+    }
 
     setBusy(true);
-    setMessage('Putting it up…');
+    setMessage(
+      `Putting up ${files.length} ${
+        files.length === 1 ? 'photo' : 'photos'
+      }…`
+    );
 
     try {
       const form = new FormData();
 
-      form.append('file', file);
-      form.append('caption', caption);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: form,
+      /*
+       * IMPORTANT:
+       * Every photo uses the same "files" field.
+       *
+       * The API uses form.getAll('files') to receive them.
+       */
+      files.forEach((file) => {
+        form.append('files', file);
       });
 
-      const json = await response.json().catch(() => ({}));
+      form.append('caption', caption);
+
+      const response = await fetch(
+        '/api/upload',
+        {
+          method: 'POST',
+          body: form,
+        }
+      );
+
+      const json = await response
+        .json()
+        .catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(json.error || 'Upload failed.');
+        throw new Error(
+          json.error || 'Upload failed.'
+        );
       }
 
       resetModal();
 
-      setToast('it is up ♡');
+      setToast(
+        json.count === 1
+          ? 'it is up ♡'
+          : `${json.count} photos are up ♡`
+      );
 
       await load();
 
@@ -257,22 +432,33 @@ export default function BirthdayWall() {
   }
 
   async function remove(id: string) {
-    if (!confirm('Take this photo off the wall for everyone?')) {
+    if (
+      !confirm(
+        'Take this photo off the wall for everyone?'
+      )
+    ) {
       return;
     }
 
-    const response = await fetch('/api/delete', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ id }),
-    });
+    const response = await fetch(
+      '/api/delete',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ id }),
+      }
+    );
 
-    const json = await response.json().catch(() => ({}));
+    const json = await response
+      .json()
+      .catch(() => ({}));
 
     if (!response.ok) {
-      setToast(json.error || 'Could not remove it');
+      setToast(
+        json.error || 'Could not remove it'
+      );
 
       setTimeout(() => {
         setToast('');
@@ -290,25 +476,83 @@ export default function BirthdayWall() {
     }, 2500);
   }
 
+  function renderPhotoCard(photo: Photo) {
+    return (
+      <figure
+        className="card"
+        key={photo.id}
+      >
+        <span className="pin">
+          <Star fill="#addae8" />
+        </span>
+
+        {photo.from === attendee && (
+          <button
+            className="del"
+            onClick={() =>
+              remove(photo.id)
+            }
+          >
+            remove
+          </button>
+        )}
+
+        <div className="frame">
+          <img
+            loading="lazy"
+            src={`https://drive.google.com/thumbnail?id=${encodeURIComponent(
+              photo.driveFileId
+            )}&sz=w1200`}
+            alt={
+              photo.caption ||
+              'A photo on the wall'
+            }
+          />
+        </div>
+
+        {photo.caption && (
+          <figcaption className="cap">
+            {photo.caption}
+          </figcaption>
+        )}
+
+        {photo.from && (
+          <p className="by">
+            {photo.from}
+          </p>
+        )}
+      </figure>
+    );
+  }
+
   return (
     <>
       {!attendee && (
         <div className="attendee-veil">
           <div className="attendee-sheet">
             <span className="badge">
-              <Motif kind="star" index={0} /> a whole wall just for them
+              <Motif
+                kind="star"
+                index={0}
+              />{' '}
+              a whole wall just for them
             </span>
 
             <h2>who are you?</h2>
 
-            <p>pick your little corner of the wall</p>
+            <p>
+              pick your little corner of the
+              wall
+            </p>
 
             <div className="attendee-grid">
               {ATTENDEES.map((name) => (
                 <button
                   key={name}
                   className="attendee-button"
-                  onClick={() => choose(name)}
+                  onClick={() =>
+                    choose(name)
+                  }
                 >
                   {name}
                 </button>
@@ -322,20 +566,36 @@ export default function BirthdayWall() {
         <div className="dotgrid" />
 
         <div className="stickerfield">
-          {(['star', 'heart', 'swirl', 'star', 'heart', 'swirl'] as const).map(
-            (motif, index) => (
-              <div
-                key={index}
-                className={`sticker s${index + 1}`}
-              >
-                <Motif kind={motif} index={index} />
-              </div>
-            )
-          )}
+          {(
+            [
+              'star',
+              'heart',
+              'swirl',
+              'star',
+              'heart',
+              'swirl',
+            ] as const
+          ).map((motif, index) => (
+            <div
+              key={index}
+              className={`sticker s${
+                index + 1
+              }`}
+            >
+              <Motif
+                kind={motif}
+                index={index}
+              />
+            </div>
+          ))}
 
           <div className="hero">
             <span className="badge">
-              <Motif kind="star" index={0} /> a whole wall just for them
+              <Motif
+                kind="star"
+                index={0}
+              />{' '}
+              a whole wall just for them
             </span>
 
             <div className="hb-wrap">
@@ -354,22 +614,41 @@ export default function BirthdayWall() {
                 />
               </svg>
 
-              <h1 className="hb1 stitch">happy</h1>
-              <h1 className="hb2 stitch">birthday</h1>
+              <h1 className="hb1 stitch">
+                happy
+              </h1>
+
+              <h1 className="hb2 stitch">
+                birthday
+              </h1>
             </div>
 
             <div className="to-names">
-              <span className="to-tag">to the one and only</span>
+              <span className="to-tag">
+                to the one and only
+              </span>
 
               <p className="names">
-                Loraine <span className="amp">&amp;</span> Ren
+                Loraine{' '}
+                <span className="amp">
+                  &amp;
+                </span>{' '}
+                Ren
               </p>
             </div>
 
             <div className="tape-row">
-              <span className="tape">pin it up ↓</span>
-              <span className="tape">bring a picture, any picture</span>
-              <span className="tape">the goofier the better</span>
+              <span className="tape">
+                pin it up ↓
+              </span>
+
+              <span className="tape">
+                bring a picture, any picture
+              </span>
+
+              <span className="tape">
+                the goofier the better
+              </span>
             </div>
 
             <div className="cta-zone">
@@ -378,7 +657,9 @@ export default function BirthdayWall() {
                 className="cta"
                 onClick={() => {
                   if (!attendee) {
-                    setMessage('Choose an attendee first.');
+                    setMessage(
+                      'Choose an attendee first.'
+                    );
                     return;
                   }
 
@@ -403,7 +684,9 @@ export default function BirthdayWall() {
 
       <main className="wall">
         <div className="wallhead">
-          <h2 className="stitch">the wall</h2>
+          <h2 className="stitch">
+            the wall
+          </h2>
 
           <svg
             className="squig"
@@ -426,52 +709,73 @@ export default function BirthdayWall() {
           </p>
         </div>
 
-        <div className="masonry">
-          {photos.length === 0 ? (
-            <div className="empty">
-              <span className="stitch">nothing up yet</span>
+        {photos.length === 0 ? (
+          <div className="empty">
+            <span className="stitch">
+              nothing up yet
+            </span>
 
-              <p>Be the first one to pin a picture up.</p>
-            </div>
-          ) : (
-            photos.map((photo) => (
-              <figure className="card" key={photo.id}>
-                <span className="pin">
-                  <Star fill="#addae8" />
-                </span>
+            <p>
+              Be the first one to pin a
+              picture up.
+            </p>
+          </div>
+        ) : (
+          <div className="guest-sections">
+            {attendeeSections.map(
+              (guest, sectionIndex) => {
+                const guestPhotos =
+                  photosByAttendee[
+                    guest
+                  ] || [];
 
-                {photo.from === attendee && (
-                  <button
-                    className="del"
-                    onClick={() => remove(photo.id)}
+                return (
+                  <section
+                    className="guest-section"
+                    key={guest}
                   >
-                    remove
-                  </button>
-                )}
+                    <div className="guest-heading">
+                      <span className="guest-decoration">
+                        <Heart
+                          fill={
+                            PALETTE[
+                              sectionIndex %
+                                PALETTE.length
+                            ]
+                          }
+                        />
+                      </span>
 
-                <div className="frame">
-                  <img
-                    loading="lazy"
-                    src={`https://drive.google.com/thumbnail?id=${encodeURIComponent(
-                      photo.driveFileId
-                    )}&sz=w1200`}
-                    alt={photo.caption || 'A photo on the wall'}
-                  />
-                </div>
+                      <div>
+                        <p className="guest-small">
+                          photos from
+                        </p>
 
-                {photo.caption && (
-                  <figcaption className="cap">
-                    {photo.caption}
-                  </figcaption>
-                )}
+                        <h3 className="stitch">
+                          {guest}
+                        </h3>
+                      </div>
 
-                {photo.from && (
-                  <p className="by">{photo.from}</p>
-                )}
-              </figure>
-            ))
-          )}
-        </div>
+                      <span className="guest-count">
+                        {guestPhotos.length}{' '}
+                        {guestPhotos.length ===
+                        1
+                          ? 'photo'
+                          : 'photos'}
+                      </span>
+                    </div>
+
+                    <div className="masonry">
+                      {guestPhotos.map(
+                        renderPhotoCard
+                      )}
+                    </div>
+                  </section>
+                );
+              }
+            )}
+          </div>
+        )}
       </main>
 
       <footer className="foot">
@@ -486,9 +790,14 @@ export default function BirthdayWall() {
 
       {/* ADD PHOTO MODAL */}
       <div
-        className={`veil ${open ? 'on' : ''}`}
+        className={`veil ${
+          open ? 'on' : ''
+        }`}
         onClick={(event) => {
-          if (event.currentTarget === event.target) {
+          if (
+            event.currentTarget ===
+            event.target
+          ) {
             resetModal();
           }
         }}
@@ -497,41 +806,81 @@ export default function BirthdayWall() {
           className="sheet"
           role="dialog"
           aria-modal="true"
-          aria-label="Add a photo"
+          aria-label="Add photos"
         >
-          <h3>add a photo</h3>
+          <h3>add some photos</h3>
 
           <p className="sub">
-            it goes up for everyone
+            they'll go into your little
+            corner of the wall
           </p>
 
           <label className="drop">
-            <b>choose a picture</b>
+            <b>
+              choose photos
+            </b>
 
             <small>
-              {file
-                ? 'picked — tap to swap'
-                : 'JPG · PNG · GIF · WEBP'}
+              {files.length > 0
+                ? `${files.length} ${
+                    files.length === 1
+                      ? 'photo'
+                      : 'photos'
+                  } picked — tap to swap`
+                : 'JPG · PNG · GIF · WEBP · up to 30 photos'}
             </small>
 
             <input
               type="file"
               accept="image/*"
-              onChange={(event) =>
-                pick(event.target.files?.[0] || null)
-              }
+              multiple
+              onChange={(event) => {
+                pick(
+                  event.target.files
+                );
+
+                /*
+                 * Allows selecting the same
+                 * file again later.
+                 */
+                event.currentTarget.value =
+                  '';
+              }}
             />
           </label>
 
-          {preview && (
-            <div
-              className="preview"
-              style={{ display: 'block' }}
-            >
-              <img
-                src={preview}
-                alt="The photo you picked"
-              />
+          {previews.length > 0 && (
+            <div className="preview-grid">
+              {previews.map(
+                (preview, index) => (
+                  <div
+                    className="preview-item"
+                    key={preview}
+                  >
+                    <img
+                      src={preview}
+                      alt={`Selected photo ${
+                        index + 1
+                      }`}
+                    />
+
+                    <button
+                      type="button"
+                      className="preview-remove"
+                      onClick={() =>
+                        removeSelected(
+                          index
+                        )
+                      }
+                      aria-label={`Remove photo ${
+                        index + 1
+                      }`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              )}
             </div>
           )}
 
@@ -548,7 +897,9 @@ export default function BirthdayWall() {
             maxLength={90}
             value={caption}
             onChange={(event) =>
-              setCaption(event.target.value)
+              setCaption(
+                event.target.value
+              )
             }
             placeholder="the night we lost the car keys"
           />
@@ -568,6 +919,7 @@ export default function BirthdayWall() {
               type="button"
               className="ghost"
               onClick={resetModal}
+              disabled={busy}
             >
               back
             </button>
@@ -575,10 +927,19 @@ export default function BirthdayWall() {
             <button
               type="button"
               className="solid"
-              disabled={!file || busy}
+              disabled={
+                files.length === 0 ||
+                busy
+              }
               onClick={upload}
             >
-              {busy ? 'putting it up…' : 'put it up'}
+              {busy
+                ? `putting up ${
+                    files.length
+                  }…`
+                : files.length > 1
+                  ? `put up ${files.length} photos`
+                  : 'put it up'}
             </button>
           </div>
 
@@ -588,7 +949,11 @@ export default function BirthdayWall() {
         </div>
       </div>
 
-      <div className={`toast ${toast ? 'on' : ''}`}>
+      <div
+        className={`toast ${
+          toast ? 'on' : ''
+        }`}
+      >
         {toast}
       </div>
     </>

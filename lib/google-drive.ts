@@ -47,6 +47,95 @@ function drive() {
   });
 }
 
+/**
+ * Find an attendee's folder inside the main Google Drive folder.
+ *
+ * If the folder doesn't exist yet, create it.
+ */
+async function getOrCreateAttendeeFolder(attendee: string) {
+  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+
+  if (!folderId) {
+    throw new Error('GOOGLE_DRIVE_FOLDER_ID is missing.');
+  }
+
+  const api = drive();
+
+  // Clean the attendee name so it can safely be used
+  // as a Google Drive folder name.
+  const folderName = attendee.trim();
+
+  if (!folderName) {
+    throw new Error('Attendee name is missing.');
+  }
+
+  /*
+   * Search for an existing folder with this attendee name
+   * directly inside the main site folder.
+   *
+   * mimeType = Google Drive folder
+   * trashed = false = don't use deleted folders
+   */
+  const searchResponse = await api.files.list({
+    q: [
+      `'${folderId}' in parents`,
+      `name = '${escapeDriveQueryString(folderName)}'`,
+      `mimeType = 'application/vnd.google-apps.folder'`,
+      `trashed = false`,
+    ].join(' and '),
+
+    fields: 'files(id,name,parents)',
+    spaces: 'drive',
+    pageSize: 1,
+  });
+
+  const existingFolder = searchResponse.data.files?.[0];
+
+  if (existingFolder?.id) {
+    return {
+      id: existingFolder.id,
+      name: existingFolder.name ?? folderName,
+    };
+  }
+
+  /*
+   * Folder doesn't exist, so create it.
+   */
+  const createdFolder = await api.files.create({
+    requestBody: {
+      name: folderName,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [folderId],
+    },
+
+    fields: 'id,name',
+  });
+
+  if (!createdFolder.data.id) {
+    throw new Error(
+      `Could not create Google Drive folder for ${folderName}.`
+    );
+  }
+
+  return {
+    id: createdFolder.data.id,
+    name: createdFolder.data.name ?? folderName,
+  };
+}
+
+/**
+ * Escape a string before putting it into a Google Drive
+ * files.list query.
+ */
+function escapeDriveQueryString(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/**
+ * Upload one photo to the selected attendee's Google Drive folder.
+ *
+ * The attendee folder lives inside GOOGLE_DRIVE_FOLDER_ID.
+ */
 export async function uploadToDrive(
   file: File,
   attendee: string
@@ -57,15 +146,38 @@ export async function uploadToDrive(
     throw new Error('GOOGLE_DRIVE_FOLDER_ID is missing.');
   }
 
+  if (!attendee?.trim()) {
+    throw new Error('Attendee is missing.');
+  }
+
   const api = drive();
+
+  /*
+   * Get the attendee's subfolder.
+   *
+   * Example:
+   *
+   * Main Folder
+   *   ├── Loraine
+   *   ├── Ren
+   *   └── Guest 3
+   */
+  const attendeeFolder = await getOrCreateAttendeeFolder(attendee);
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
+  /*
+   * Clean the original filename.
+   */
   const safe = file.name.replace(
     /[^a-zA-Z0-9._-]/g,
     '_'
   );
 
+  /*
+   * Timestamp prevents two uploads with the same filename
+   * from accidentally having the same name.
+   */
   const stamp = new Date()
     .toISOString()
     .replace(/[:.]/g, '-');
@@ -76,7 +188,14 @@ export async function uploadToDrive(
     const { data } = await api.files.create({
       requestBody: {
         name,
-        parents: [folderId],
+
+        /*
+         * IMPORTANT:
+         * This is now the attendee subfolder,
+         * NOT the main site folder.
+         */
+        parents: [attendeeFolder.id],
+
         mimeType: file.type || 'image/jpeg',
       },
 
@@ -97,9 +216,13 @@ export async function uploadToDrive(
     return {
       id: data.id,
       name: data.name ?? name,
+
       url:
         data.webViewLink ??
         `https://drive.google.com/file/d/${data.id}/view`,
+
+      folderId: attendeeFolder.id,
+      folderName: attendeeFolder.name,
     };
   } catch (error: any) {
     console.error(
@@ -119,9 +242,16 @@ export async function uploadToDrive(
   }
 }
 
+/**
+ * Delete a photo from Google Drive.
+ */
 export async function deleteFromDrive(
   fileId: string
 ) {
+  if (!fileId) {
+    throw new Error('Google Drive file ID is missing.');
+  }
+
   try {
     await drive().files.delete({
       fileId,
