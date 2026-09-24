@@ -4,5 +4,5 @@ export default nextConfig;
 
 // next.config.js
 module.exports = {
-  allowedDevOrigins: ['10.187.208.252'],
+  allowedDevOrigins: ['10.0.0.227','10.187.208.252'],
 }
