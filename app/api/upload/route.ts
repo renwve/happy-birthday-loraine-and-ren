@@ -2,47 +2,52 @@ import { NextResponse } from 'next/server';
 
 import { currentAttendee } from '@/lib/attendee-cookie';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { uploadToDrive } from '@/lib/google-drive';
+import {
+  createAlbumFolder,
+  uploadToDrive,
+} from '@/lib/google-drive';
 
 export const runtime = 'nodejs';
 
-const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 const MAX_FILES = 200;
 
-export async function POST(request: Request) {
+const MAX_IMAGE_SIZE =
+  15 * 1024 * 1024;
+
+const MAX_VIDEO_SIZE =
+  200 * 1024 * 1024;
+
+export async function POST(
+  request: Request
+) {
   try {
-    /*
-     * Make sure a guest has been selected.
-     */
-    const attendee = await currentAttendee();
+    const attendee =
+      await currentAttendee();
 
     if (!attendee) {
       return NextResponse.json(
-        { error: 'Choose an attendee first.' },
+        {
+          error:
+            'Choose an attendee first.',
+        },
         { status: 401 }
       );
     }
 
-    const form = await request.formData();
+    const form =
+      await request.formData();
 
-    /*
-     * The frontend will send:
-     *
-     * files = photo 1
-     * files = photo 2
-     * files = photo 3
-     *
-     * We use getAll() so multiple files are supported.
-     *
-     * We also accept the old "file" field so the route
-     * remains compatible with the previous uploader.
-     */
     let files = form
       .getAll('files')
-      .filter((value): value is File => value instanceof File);
+      .filter(
+        (value): value is File =>
+          value instanceof File
+      );
 
+    // Backwards compatibility.
     if (files.length === 0) {
-      const oldFile = form.get('file');
+      const oldFile =
+        form.get('file');
 
       if (oldFile instanceof File) {
         files = [oldFile];
@@ -55,173 +60,264 @@ export async function POST(request: Request) {
       .trim()
       .slice(0, 90);
 
-    /*
-     * Make sure at least one photo was supplied.
-     */
     if (files.length === 0) {
       return NextResponse.json(
-        { error: 'Please choose at least one photo.' },
+        {
+          error:
+            'Please choose at least one photo or video.',
+        },
         { status: 400 }
       );
     }
 
-    /*
-     * Protect the endpoint from accidentally receiving
-     * an enormous number of files.
-     */
     if (files.length > MAX_FILES) {
       return NextResponse.json(
         {
-          error: `You can upload up to ${MAX_FILES} photos at once.`,
+          error:
+            `You can upload up to ${MAX_FILES} items at once.`,
         },
         { status: 400 }
       );
     }
 
     /*
-     * Validate every file BEFORE uploading anything.
-     *
-     * This prevents a situation where the first few photos
-     * are uploaded and then a later invalid file causes
-     * the request to fail.
+     * Validate everything BEFORE creating
+     * the album or uploading anything.
      */
     for (const file of files) {
-      if (!file.type.startsWith('image/')) {
+      const isImage =
+        file.type.startsWith(
+          'image/'
+        );
+
+      const isVideo =
+        file.type.startsWith(
+          'video/'
+        );
+
+      if (!isImage && !isVideo) {
         return NextResponse.json(
           {
-            error: `"${file.name}" is not an image.`,
+            error:
+              `"${file.name}" is not a photo or video.`,
           },
           { status: 400 }
         );
       }
 
-      if (file.size > MAX_FILE_SIZE) {
+      const maxSize = isVideo
+        ? MAX_VIDEO_SIZE
+        : MAX_IMAGE_SIZE;
+
+      if (file.size > maxSize) {
         return NextResponse.json(
           {
-            error: `"${file.name}" is too large. Please keep every photo under 15 MB.`,
+            error: isVideo
+              ? `"${file.name}" is too large. Keep videos under 200 MB.`
+              : `"${file.name}" is too large. Keep photos under 15 MB.`,
           },
           { status: 400 }
         );
       }
     }
 
-    const db = supabaseAdmin();
+    const db =
+      supabaseAdmin();
 
-    /*
-     * Find the attendee in Supabase.
-     */
-    const { data: person, error: personError } = await db
+    const {
+      data: person,
+      error: personError,
+    } = await db
       .from('attendees')
       .select('id')
       .eq('name', attendee)
       .single();
 
-    if (personError || !person) {
+    if (
+      personError ||
+      !person
+    ) {
       return NextResponse.json(
-        { error: 'Attendee is not configured.' },
+        {
+          error:
+            'Attendee is not configured.',
+        },
         { status: 500 }
       );
     }
 
     /*
-     * Upload the photos one at a time.
-     *
-     * uploadToDrive() automatically puts each photo
-     * into this attendee's Google Drive subfolder.
+     * Create ONE album ID.
      */
-    const uploadedPhotos: Array<{
-      id: string;
-      name: string;
-      url: string;
-      folderId?: string;
-      folderName?: string;
-      originalName: string;
-      caption: string | null;
-    }> = [];
+    const {
+      data: album,
+      error: albumError,
+    } = await db
+      .from('albums')
+      .insert({
+        attendee_id:
+          person.id,
 
-    for (const file of files) {
-      const uploaded = await uploadToDrive(
-        file,
-        attendee
+        caption:
+          caption || null,
+      })
+      .select(
+        'id'
+      )
+      .single();
+
+    if (
+      albumError ||
+      !album
+    ) {
+      console.error(
+        'ALBUM CREATE ERROR:',
+        albumError
       );
 
-      uploadedPhotos.push({
-        id: uploaded.id,
-        name: uploaded.name,
-        url: uploaded.url,
-        folderId: uploaded.folderId,
-        folderName: uploaded.folderName,
-        originalName: file.name,
-        caption: caption || null,
+      return NextResponse.json(
+        {
+          error:
+            'Could not create the album.',
+        },
+        { status: 500 }
+      );
+    }
+
+    /*
+     * Create the matching Google Drive
+     * album folder.
+     */
+    const driveAlbum =
+      await createAlbumFolder(
+        attendee,
+        album.id
+      );
+
+    /*
+     * Save the Drive folder ID.
+     */
+    const {
+      error:
+        albumFolderError,
+    } = await db
+      .from('albums')
+      .update({
+        drive_folder_id:
+          driveAlbum.id,
+      })
+      .eq(
+        'id',
+        album.id
+      );
+
+    if (albumFolderError) {
+      console.error(
+        'ALBUM FOLDER SAVE ERROR:',
+        albumFolderError
+      );
+    }
+
+    const uploaded = [];
+
+    /*
+     * Upload every item into the SAME
+     * Drive album folder.
+     */
+    for (
+      const file of files
+    ) {
+      const driveFile =
+        await uploadToDrive(
+          file,
+          attendee,
+          driveAlbum.id
+        );
+
+      uploaded.push({
+        driveFile,
+        file,
       });
     }
 
     /*
-     * Save all uploaded photos in Supabase.
+     * Create all Supabase photo/media records.
      */
-    const rows = uploadedPhotos.map((uploaded, index) => {
-      const originalFile = files[index];
+    const rows =
+      uploaded.map(
+        ({
+          driveFile,
+          file,
+        }) => ({
+          album_id:
+            album.id,
 
-      return {
-        attendee_id: person.id,
-        caption: uploaded.caption,
-        original_name: originalFile.name,
-        mime_type:
-          originalFile.type || 'image/jpeg',
-        drive_file_id: uploaded.id,
-        drive_file_url: uploaded.url,
-      };
-    });
+          attendee_id:
+            person.id,
 
-    const { data, error } = await db
+          caption:
+            caption || null,
+
+          original_name:
+            file.name,
+
+          mime_type:
+            file.type,
+
+          media_type:
+            file.type.startsWith(
+              'video/'
+            )
+              ? 'video'
+              : 'image',
+
+          drive_file_id:
+            driveFile.id,
+
+          drive_file_url:
+            driveFile.url,
+        })
+      );
+
+    const {
+      data,
+      error,
+    } = await db
       .from('photos')
       .insert(rows)
       .select('id');
 
     if (error) {
-      /*
-       * At this point the files are already in Drive,
-       * but their database records failed.
-       *
-       * We don't pretend the upload was completely
-       * successful.
-       */
       console.error(
-        'SUPABASE PHOTO INSERT ERROR:',
+        'SUPABASE MEDIA INSERT ERROR:',
         error
       );
 
       return NextResponse.json(
         {
           error:
-            uploadedPhotos.length === 1
-              ? 'Photo reached Drive but its database record could not be saved.'
-              : `${uploadedPhotos.length} photos reached Drive but their database records could not be saved.`,
-          uploadedToDrive: uploadedPhotos.map(
-            (photo) => ({
-              id: photo.id,
-              name: photo.name,
-            })
-          ),
+            'The files reached Google Drive, but their database records could not be saved.',
         },
         { status: 500 }
       );
     }
 
-    /*
-     * Everything succeeded.
-     */
     return NextResponse.json({
       ok: true,
-      count: uploadedPhotos.length,
+
+      count:
+        uploaded.length,
+
+      albumId:
+        album.id,
+
+      albumFolderId:
+        driveAlbum.id,
+
       attendee,
-      folder: {
-        id: uploadedPhotos[0]?.folderId ?? null,
-        name:
-          uploadedPhotos[0]?.folderName ??
-          attendee,
-      },
-      photos: data ?? [],
+
+      photos:
+        data ?? [],
     });
   } catch (error) {
     console.error(

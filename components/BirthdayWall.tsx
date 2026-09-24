@@ -1,16 +1,39 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
 import { ATTENDEES } from '@/lib/attendees';
 
-type Photo = {
+type MediaItem = {
   id: string;
+  albumId: string | null;
+
   caption: string | null;
+
+  originalName: string;
+
+  mimeType: string;
+  mediaType: 'image' | 'video';
+
   driveFileId: string;
   driveUrl: string;
+
   createdAt: string;
+
   attendeeId: string;
   from: string | null;
+};
+
+type Album = {
+  id: string;
+  guest: string;
+  items: MediaItem[];
+  caption: string | null;
+  createdAt: string;
 };
 
 const PALETTE = [
@@ -20,9 +43,16 @@ const PALETTE = [
   '#243e8b',
 ];
 
-function Star({ fill }: { fill: string }) {
+function Star({
+  fill,
+}: {
+  fill: string;
+}) {
   return (
-    <svg viewBox="0 0 100 100" aria-hidden="true">
+    <svg
+      viewBox="0 0 100 100"
+      aria-hidden="true"
+    >
       <path
         d="M50 4 L61 37 L96 37 L67 58 L78 92 L50 71 L22 92 L33 58 L4 37 L39 37 Z"
         fill={fill}
@@ -30,6 +60,7 @@ function Star({ fill }: { fill: string }) {
         strokeWidth="7"
         strokeLinejoin="round"
       />
+
       <path
         d="M50 4 L61 37 L96 37 L67 58 L78 92 L50 71 L22 92 L33 58 L4 37 L39 37 Z"
         fill="none"
@@ -41,9 +72,16 @@ function Star({ fill }: { fill: string }) {
   );
 }
 
-function Heart({ fill }: { fill: string }) {
+function Heart({
+  fill,
+}: {
+  fill: string;
+}) {
   return (
-    <svg viewBox="0 0 100 90" aria-hidden="true">
+    <svg
+      viewBox="0 0 100 90"
+      aria-hidden="true"
+    >
       <path
         d="M50 86 C10 58 2 34 16 18 C28 4 46 8 50 26 C54 8 72 4 84 18 C98 34 90 58 50 86 Z"
         fill={fill}
@@ -51,6 +89,7 @@ function Heart({ fill }: { fill: string }) {
         strokeWidth="7"
         strokeLinejoin="round"
       />
+
       <path
         d="M50 86 C10 58 2 34 16 18 C28 4 46 8 50 26 C54 8 72 4 84 18 C98 34 90 58 50 86 Z"
         fill="none"
@@ -62,9 +101,16 @@ function Heart({ fill }: { fill: string }) {
   );
 }
 
-function Swirl({ color }: { color: string }) {
+function Swirl({
+  color,
+}: {
+  color: string;
+}) {
   return (
-    <svg viewBox="0 0 100 100" aria-hidden="true">
+    <svg
+      viewBox="0 0 100 100"
+      aria-hidden="true"
+    >
       <path
         d="M12 88 C4 58 16 24 46 14 C68 7 86 18 84 34 C82 47 68 53 58 47 C50 42 50 30 60 27"
         fill="none"
@@ -72,6 +118,7 @@ function Swirl({ color }: { color: string }) {
         strokeWidth="10"
         strokeLinecap="round"
       />
+
       <path
         d="M12 88 C4 58 16 24 46 14 C68 7 86 18 84 34 C82 47 68 53 58 47 C50 42 50 30 60 27"
         fill="none"
@@ -87,58 +134,148 @@ function Motif({
   kind,
   index,
 }: {
-  kind: 'star' | 'heart' | 'swirl';
+  kind:
+    | 'star'
+    | 'heart'
+    | 'swirl';
+
   index: number;
 }) {
-  const c = PALETTE[index % PALETTE.length];
+  const color =
+    PALETTE[
+      index % PALETTE.length
+    ];
 
   if (kind === 'star') {
-    return <Star fill={c} />;
+    return (
+      <Star fill={color} />
+    );
   }
 
   if (kind === 'heart') {
-    return <Heart fill={c} />;
+    return (
+      <Heart fill={color} />
+    );
   }
 
-  return <Swirl color={c} />;
+  return (
+    <Swirl color={color} />
+  );
 }
 
 export default function BirthdayWall() {
-  const [attendee, setAttendee] =
-    useState<string | null>(null);
+  const [
+    attendee,
+    setAttendee,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [
+    photos,
+    setPhotos,
+  ] =
+    useState<MediaItem[]>([]);
 
-  const [open, setOpen] = useState(false);
+  const [
+    open,
+    setOpen,
+  ] =
+    useState(false);
+
+  const [
+    files,
+    setFiles,
+  ] =
+    useState<File[]>([]);
+
+  const [
+    previews,
+    setPreviews,
+  ] =
+    useState<string[]>([]);
+
+  const [
+    caption,
+    setCaption,
+  ] =
+    useState('');
+
+  const [
+    message,
+    setMessage,
+  ] =
+    useState('');
+
+  const [
+    busy,
+    setBusy,
+  ] =
+    useState(false);
+
+  const [
+    toast,
+    setToast,
+  ] =
+    useState('');
 
   /*
-   * MULTIPLE FILE STATE
+   * Which guest/category is open.
    */
-  const [files, setFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>(
-    []
-  );
+  const [
+    selectedGuest,
+    setSelectedGuest,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [caption, setCaption] = useState('');
+  /*
+   * Which album is open.
+   */
+  const [
+    selectedAlbum,
+    setSelectedAlbum,
+  ] =
+    useState<Album | null>(
+      null
+    );
 
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState('');
+  /*
+   * Which image/video is showing.
+   */
+  const [
+    viewerIndex,
+    setViewerIndex,
+  ] =
+    useState(0);
 
   async function load() {
     try {
-      const response = await fetch('/api/photos', {
-        cache: 'no-store',
-      });
+      const response =
+        await fetch(
+          '/api/photos',
+          {
+            cache: 'no-store',
+          }
+        );
 
-      const json = await response.json();
+      const json =
+        await response.json();
 
       if (response.ok) {
-        setAttendee(json.attendee);
-        setPhotos(json.photos || []);
+        setAttendee(
+          json.attendee
+        );
+
+        setPhotos(
+          json.photos || []
+        );
       } else {
         setMessage(
-          json.error || 'Could not load the wall.'
+          json.error ||
+            'Could not load the wall.'
         );
       }
     } catch {
@@ -151,84 +288,186 @@ export default function BirthdayWall() {
   useEffect(() => {
     load();
 
-    const interval = setInterval(load, 5000);
+    const interval =
+      setInterval(
+        load,
+        5000
+      );
 
-    return () => clearInterval(interval);
+    return () =>
+      clearInterval(
+        interval
+      );
   }, []);
 
-  /*
-   * Clean up object URLs when the component unmounts.
-   */
   useEffect(() => {
     return () => {
-      previews.forEach((preview) => {
-        URL.revokeObjectURL(preview);
-      });
+      previews.forEach(
+        (preview) =>
+          URL.revokeObjectURL(
+            preview
+          )
+      );
     };
   }, [previews]);
 
   /*
-   * Group the photos by attendee.
+   * Group media by guest.
    */
-  const photosByAttendee = useMemo(() => {
-    const grouped: Record<string, Photo[]> = {};
+  const mediaByGuest =
+    useMemo(() => {
+      const grouped: Record<
+        string,
+        MediaItem[]
+      > = {};
 
-    for (const photo of photos) {
-      const name = photo.from || 'unknown guest';
+      for (
+        const item of photos
+      ) {
+        const guest =
+          item.from ||
+          'unknown guest';
 
-      if (!grouped[name]) {
-        grouped[name] = [];
+        if (!grouped[guest]) {
+          grouped[guest] =
+            [];
+        }
+
+        grouped[guest].push(
+          item
+        );
       }
 
-      grouped[name].push(photo);
-    }
+      return grouped;
+    }, [photos]);
 
-    return grouped;
-  }, [photos]);
+  const attendeeSections =
+    useMemo(() => {
+      const configured =
+        ATTENDEES.filter(
+          (name) =>
+            mediaByGuest[
+              name
+            ]?.length
+        );
+
+      const unknown =
+        Object.keys(
+          mediaByGuest
+        ).filter(
+          (name) =>
+            !ATTENDEES.some(
+              (guest) =>
+                guest === name
+            )
+        );
+
+      return [
+        ...configured,
+        ...unknown,
+      ];
+    }, [
+      mediaByGuest,
+    ]);
 
   /*
-   * Keep the configured attendee order.
-   *
-   * This means the wall follows the same order as
-   * your ATTENDEES array.
+   * Turn a guest's media into albums.
    */
-  const attendeeSections = useMemo(() => {
-    const configured = ATTENDEES.filter(
-      (name) => photosByAttendee[name]?.length
-    );
-    
-const unknown = Object.keys(
-  photosByAttendee
-).filter(
-  (name) => !ATTENDEES.some(
-    (attendeeName) => attendeeName === name
-  )
-);
+  function getAlbums(
+    guest: string
+  ): Album[] {
+    const items =
+      mediaByGuest[
+        guest
+      ] || [];
 
-    return [
-      ...configured,
-      ...unknown,
-    ];
-  }, [photosByAttendee]);
+    const grouped:
+      Record<
+        string,
+        MediaItem[]
+      > = {};
 
-  async function choose(name: string) {
+    for (
+      const item of items
+    ) {
+      const albumId =
+        item.albumId ||
+        `legacy-${item.id}`;
+
+      if (!grouped[albumId]) {
+        grouped[albumId] =
+          [];
+      }
+
+      grouped[albumId].push(
+        item
+      );
+    }
+
+    return Object.entries(
+      grouped
+    )
+      .map(
+        ([
+          id,
+          albumItems,
+        ]) => ({
+          id,
+          guest,
+          items: albumItems,
+          caption:
+            albumItems[0]
+              ?.caption ||
+            null,
+          createdAt:
+            albumItems
+              .map(
+                (item) =>
+                  item.createdAt
+              )
+              .sort()
+              .at(0) ||
+            new Date().toISOString(),
+        })
+      )
+      .sort(
+        (a, b) =>
+          new Date(
+            b.createdAt
+          ).getTime() -
+          new Date(
+            a.createdAt
+          ).getTime()
+      );
+  }
+
+  async function choose(
+    name: string
+  ) {
     setMessage('');
 
     try {
-      const response = await fetch(
-        '/api/attendee/select',
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({ name }),
-        }
-      );
+      const response =
+        await fetch(
+          '/api/attendee/select',
+          {
+            method: 'POST',
+            headers: {
+              'content-type':
+                'application/json',
+            },
+            body: JSON.stringify({
+              name,
+            }),
+          }
+        );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      const json =
+        await response
+          .json()
+          .catch(
+            () => ({})
+          );
 
       if (!response.ok) {
         setMessage(
@@ -238,15 +477,13 @@ const unknown = Object.keys(
         return;
       }
 
-      setAttendee(json.attendee || name);
-
-      await load();
-    } catch (error) {
-      console.error(
-        'Guest selection error:',
-        error
+      setAttendee(
+        json.attendee ||
+          name
       );
 
+      await load();
+    } catch {
       setMessage(
         'Could not choose your guest. Please try again.'
       );
@@ -255,107 +492,162 @@ const unknown = Object.keys(
 
   function resetModal() {
     setOpen(false);
+
     setFiles([]);
+
     setCaption('');
+
     setMessage('');
 
-    previews.forEach((preview) => {
-      URL.revokeObjectURL(preview);
-    });
+    previews.forEach(
+      (preview) =>
+        URL.revokeObjectURL(
+          preview
+        )
+    );
 
     setPreviews([]);
   }
 
-  /*
-   * Add multiple selected files.
-   */
   function pick(
     selectedFiles: FileList | null
   ) {
-    if (!selectedFiles) return;
+    if (!selectedFiles)
+      return;
 
-    const incoming = Array.from(selectedFiles);
+    const incoming =
+      Array.from(
+        selectedFiles
+      );
 
-    if (incoming.length === 0) {
+    if (
+      incoming.length ===
+      0
+    ) {
       return;
     }
 
     /*
-     * Limit the number of photos in one batch.
+     * Keep the server-side 200-item
+     * safety limit.
      */
-    if (incoming.length > 30) {
+    if (
+      incoming.length >
+      200
+    ) {
       setMessage(
-        'You can choose up to 30 photos at once.'
+        'You can choose up to 200 photos or videos at once.'
       );
       return;
     }
 
-    /*
-     * Validate every file before adding it.
-     */
-    for (const file of incoming) {
-      if (!file.type.startsWith('image/')) {
+    for (
+      const file of incoming
+    ) {
+      const isImage =
+        file.type.startsWith(
+          'image/'
+        );
+
+      const isVideo =
+        file.type.startsWith(
+          'video/'
+        );
+
+      if (
+        !isImage &&
+        !isVideo
+      ) {
         setMessage(
-          `"${file.name}" is not a picture.`
+          `"${file.name}" is not a photo or video.`
         );
         return;
       }
 
-      if (file.size > 15 * 1024 * 1024) {
+      if (
+        isImage &&
+        file.size >
+          15 *
+            1024 *
+            1024
+      ) {
         setMessage(
           `"${file.name}" is too large. Keep photos under 15 MB.`
         );
         return;
       }
+
+      if (
+        isVideo &&
+        file.size >
+          200 *
+            1024 *
+            1024
+      ) {
+        setMessage(
+          `"${file.name}" is too large. Keep videos under 200 MB.`
+        );
+        return;
+      }
     }
 
-    /*
-     * Remove previous preview URLs.
-     */
-    previews.forEach((preview) => {
-      URL.revokeObjectURL(preview);
-    });
-
-    const nextFiles = incoming;
-    const nextPreviews = nextFiles.map(
-      (file) => URL.createObjectURL(file)
+    previews.forEach(
+      (preview) =>
+        URL.revokeObjectURL(
+          preview
+        )
     );
 
-    setFiles(nextFiles);
-    setPreviews(nextPreviews);
+    setFiles(
+      incoming
+    );
+
+    setPreviews(
+      incoming.map(
+        (file) =>
+          URL.createObjectURL(
+            file
+          )
+      )
+    );
+
     setMessage('');
   }
 
-  /*
-   * Remove one photo before uploading.
-   */
-  function removeSelected(index: number) {
-    const nextFiles = files.filter(
-      (_, fileIndex) => fileIndex !== index
-    );
+  function removeSelected(
+    index: number
+  ) {
+    const removed =
+      previews[index];
 
-    const nextPreviews = previews.filter(
-      (_, previewIndex) =>
-        previewIndex !== index
-    );
-
-    const removedPreview = previews[index];
-
-    if (removedPreview) {
-      URL.revokeObjectURL(removedPreview);
+    if (removed) {
+      URL.revokeObjectURL(
+        removed
+      );
     }
 
-    setFiles(nextFiles);
-    setPreviews(nextPreviews);
+    setFiles(
+      files.filter(
+        (_, i) =>
+          i !== index
+      )
+    );
+
+    setPreviews(
+      previews.filter(
+        (_, i) =>
+          i !== index
+      )
+    );
   }
 
-  /*
-   * Upload every selected photo.
-   */
   async function upload() {
-    if (files.length === 0) {
+    if (
+      files.length ===
+      0
+    ) {
       setMessage(
-        'Choose at least one photo first.'
+        'Choose at least one photo or video first.'
       );
       return;
     }
@@ -368,42 +660,52 @@ const unknown = Object.keys(
     }
 
     setBusy(true);
+
     setMessage(
       `Putting up ${files.length} ${
-        files.length === 1 ? 'photo' : 'photos'
+        files.length === 1
+          ? 'memory'
+          : 'memories'
       }…`
     );
 
     try {
-      const form = new FormData();
+      const form =
+        new FormData();
 
-      /*
-       * IMPORTANT:
-       * Every photo uses the same "files" field.
-       *
-       * The API uses form.getAll('files') to receive them.
-       */
-      files.forEach((file) => {
-        form.append('files', file);
-      });
-
-      form.append('caption', caption);
-
-      const response = await fetch(
-        '/api/upload',
-        {
-          method: 'POST',
-          body: form,
-        }
+      files.forEach(
+        (file) =>
+          form.append(
+            'files',
+            file
+          )
       );
 
-      const json = await response
-        .json()
-        .catch(() => ({}));
+      form.append(
+        'caption',
+        caption
+      );
+
+      const response =
+        await fetch(
+          '/api/upload',
+          {
+            method: 'POST',
+            body: form,
+          }
+        );
+
+      const json =
+        await response
+          .json()
+          .catch(
+            () => ({})
+          );
 
       if (!response.ok) {
         throw new Error(
-          json.error || 'Upload failed.'
+          json.error ||
+            'Upload failed.'
         );
       }
 
@@ -412,15 +714,19 @@ const unknown = Object.keys(
       setToast(
         json.count === 1
           ? 'it is up ♡'
-          : `${json.count} photos are up ♡`
+          : `${json.count} memories are up ♡`
       );
 
       await load();
 
-      setTimeout(() => {
-        setToast('');
-      }, 2500);
-    } catch (error) {
+      setTimeout(
+        () =>
+          setToast(''),
+        2500
+      );
+    } catch (
+      error
+    ) {
       setMessage(
         error instanceof Error
           ? error.message
@@ -431,99 +737,189 @@ const unknown = Object.keys(
     }
   }
 
-  async function remove(id: string) {
+  async function remove(
+    id: string
+  ) {
     if (
       !confirm(
-        'Take this photo off the wall for everyone?'
+        'Take this memory off the wall for everyone?'
       )
     ) {
       return;
     }
 
-    const response = await fetch(
-      '/api/delete',
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ id }),
-      }
-    );
+    const response =
+      await fetch(
+        '/api/delete',
+        {
+          method: 'POST',
+          headers: {
+            'content-type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            id,
+          }),
+        }
+      );
 
-    const json = await response
-      .json()
-      .catch(() => ({}));
+    const json =
+      await response
+        .json()
+        .catch(
+          () => ({})
+        );
 
     if (!response.ok) {
       setToast(
-        json.error || 'Could not remove it'
+        json.error ||
+          'Could not remove it'
       );
 
-      setTimeout(() => {
-        setToast('');
-      }, 2500);
+      setTimeout(
+        () =>
+          setToast(''),
+        2500
+      );
 
       return;
     }
 
-    setToast('taken down');
+    setToast(
+      'taken down'
+    );
 
     await load();
 
-    setTimeout(() => {
-      setToast('');
-    }, 2500);
-  }
-
-  function renderPhotoCard(photo: Photo) {
-    return (
-      <figure
-        className="card"
-        key={photo.id}
-      >
-        <span className="pin">
-          <Star fill="#addae8" />
-        </span>
-
-        {photo.from === attendee && (
-          <button
-            className="del"
-            onClick={() =>
-              remove(photo.id)
-            }
-          >
-            remove
-          </button>
-        )}
-
-        <div className="frame">
-          <img
-            loading="lazy"
-            src={`https://drive.google.com/thumbnail?id=${encodeURIComponent(
-              photo.driveFileId
-            )}&sz=w1200`}
-            alt={
-              photo.caption ||
-              'A photo on the wall'
-            }
-          />
-        </div>
-
-        {photo.caption && (
-          <figcaption className="cap">
-            {photo.caption}
-          </figcaption>
-        )}
-
-        {photo.from && (
-          <p className="by">
-            {photo.from}
-          </p>
-        )}
-      </figure>
+    setTimeout(
+      () =>
+        setToast(''),
+      2500
     );
   }
+
+  /*
+   * Open guest.
+   */
+  function openGuest(
+    guest: string
+  ) {
+    setSelectedGuest(
+      guest
+    );
+  }
+
+  /*
+   * Open album viewer.
+   */
+  function openAlbum(
+    album: Album
+  ) {
+    setSelectedAlbum(
+      album
+    );
+
+    setViewerIndex(0);
+  }
+
+  function closeViewer() {
+    setSelectedAlbum(
+      null
+    );
+
+    setViewerIndex(0);
+  }
+
+  function nextItem() {
+    if (
+      !selectedAlbum
+    ) {
+      return;
+    }
+
+    setViewerIndex(
+      (current) =>
+        (
+          current + 1
+        ) %
+        selectedAlbum.items
+          .length
+    );
+  }
+
+  function previousItem() {
+    if (
+      !selectedAlbum
+    ) {
+      return;
+    }
+
+    setViewerIndex(
+      (current) =>
+        (
+          current -
+            1 +
+            selectedAlbum
+              .items
+              .length
+        ) %
+        selectedAlbum.items
+          .length
+    );
+  }
+
+  /*
+   * Keyboard navigation.
+   */
+  useEffect(() => {
+    if (
+      !selectedAlbum
+    ) {
+      return;
+    }
+
+    function handleKey(
+      event: KeyboardEvent
+    ) {
+      if (
+        event.key ===
+        'ArrowRight'
+      ) {
+        nextItem();
+      }
+
+      if (
+        event.key ===
+        'ArrowLeft'
+      ) {
+        previousItem();
+      }
+
+      if (
+        event.key ===
+        'Escape'
+      ) {
+        closeViewer();
+      }
+    }
+
+    window.addEventListener(
+      'keydown',
+      handleKey
+    );
+
+    return () =>
+      window.removeEventListener(
+        'keydown',
+        handleKey
+      );
+  });
+
+  const currentItem =
+    selectedAlbum
+      ?.items[
+        viewerIndex
+      ];
 
   return (
     <>
@@ -538,25 +934,30 @@ const unknown = Object.keys(
               a whole wall just for them
             </span>
 
-            <h2>who are you?</h2>
+            <h2>
+              who are you?
+            </h2>
 
             <p>
-              pick your little corner of the
-              wall
+              pick your little corner of the wall
             </p>
 
             <div className="attendee-grid">
-              {ATTENDEES.map((name) => (
-                <button
-                  key={name}
-                  className="attendee-button"
-                  onClick={() =>
-                    choose(name)
-                  }
-                >
-                  {name}
-                </button>
-              ))}
+              {ATTENDEES.map(
+                (name) => (
+                  <button
+                    key={name}
+                    className="attendee-button"
+                    onClick={() =>
+                      choose(
+                        name
+                      )
+                    }
+                  >
+                    {name}
+                  </button>
+                )
+              )}
             </div>
           </div>
         </div>
@@ -575,19 +976,26 @@ const unknown = Object.keys(
               'heart',
               'swirl',
             ] as const
-          ).map((motif, index) => (
-            <div
-              key={index}
-              className={`sticker s${
-                index + 1
-              }`}
-            >
-              <Motif
-                kind={motif}
-                index={index}
-              />
-            </div>
-          ))}
+          ).map(
+            (
+              motif,
+              index
+            ) => (
+              <div
+                key={index}
+                className={`sticker s${
+                  index + 1
+                }`}
+              >
+                <Motif
+                  kind={motif}
+                  index={
+                    index
+                  }
+                />
+              </div>
+            )
+          )}
 
           <div className="hero">
             <span className="badge">
@@ -667,7 +1075,7 @@ const unknown = Object.keys(
                   setOpen(true);
                 }}
               >
-                + add a photo
+                + add a photo or video
               </button>
 
               <span className="cta-note">
@@ -703,38 +1111,55 @@ const unknown = Object.keys(
           </svg>
 
           <p className="count">
-            {photos.length === 1
-              ? '1 photo so far'
-              : `${photos.length} photos so far`}
+            {photos.length ===
+            1
+              ? '1 memory so far'
+              : `${photos.length} memories so far`}
           </p>
         </div>
 
-        {photos.length === 0 ? (
+        {photos.length ===
+        0 ? (
           <div className="empty">
             <span className="stitch">
               nothing up yet
             </span>
 
             <p>
-              Be the first one to pin a
-              picture up.
+              Be the first one to pin a picture up.
             </p>
           </div>
         ) : (
           <div className="guest-sections">
             {attendeeSections.map(
-              (guest, sectionIndex) => {
-                const guestPhotos =
-                  photosByAttendee[
+              (
+                guest,
+                sectionIndex
+              ) => {
+                const guestMedia =
+                  mediaByGuest[
                     guest
                   ] || [];
+
+                const albums =
+                  getAlbums(
+                    guest
+                  );
 
                 return (
                   <section
                     className="guest-section"
                     key={guest}
                   >
-                    <div className="guest-heading">
+                    <button
+                      type="button"
+                      className="guest-heading guest-heading-button"
+                      onClick={() =>
+                        openGuest(
+                          guest
+                        )
+                      }
+                    >
                       <span className="guest-decoration">
                         <Heart
                           fill={
@@ -748,7 +1173,7 @@ const unknown = Object.keys(
 
                       <div>
                         <p className="guest-small">
-                          photos from
+                          memories from
                         </p>
 
                         <h3 className="stitch">
@@ -757,19 +1182,14 @@ const unknown = Object.keys(
                       </div>
 
                       <span className="guest-count">
-                        {guestPhotos.length}{' '}
-                        {guestPhotos.length ===
+                        {guestMedia.length}{' '}
+                        {guestMedia.length ===
                         1
-                          ? 'photo'
-                          : 'photos'}
+                          ? 'memory'
+                          : 'memories'}
+                        {' '}· tap to peek
                       </span>
-                    </div>
-
-                    <div className="masonry">
-                      {guestPhotos.map(
-                        renderPhotoCard
-                      )}
-                    </div>
+                    </button>
                   </section>
                 );
               }
@@ -784,11 +1204,241 @@ const unknown = Object.keys(
         </span>
 
         <p className="row2">
-          keep the photos coming all week ♡
+          keep the memories coming all week ♡
         </p>
       </footer>
 
-      {/* ADD PHOTO MODAL */}
+      {/*
+       * GUEST ALBUMS
+       */}
+      {selectedGuest && (
+        <div
+          className="album-veil on"
+          onClick={(event) => {
+            if (
+              event.target ===
+              event.currentTarget
+            ) {
+              setSelectedGuest(
+                null
+              );
+            }
+          }}
+        >
+          <div className="album-sheet">
+            <button
+              type="button"
+              className="album-close"
+              onClick={() =>
+                setSelectedGuest(
+                  null
+                )
+              }
+            >
+              ×
+            </button>
+
+            <p className="guest-small">
+              memories from
+            </p>
+
+            <h2 className="stitch">
+              {selectedGuest}
+            </h2>
+
+            <p className="album-intro">
+              little bundles of memories,
+              exactly as they were uploaded ♡
+            </p>
+
+            <div className="album-grid">
+              {getAlbums(
+                selectedGuest
+              ).map(
+                (
+                  album,
+                  index
+                ) => {
+                  const first =
+                    album.items[0];
+
+                  return (
+                    <button
+                      type="button"
+                      key={album.id}
+                      className={`album-card album-tilt-${
+                        index %
+                        4
+                      }`}
+                      onClick={() =>
+                        openAlbum(
+                          album
+                        )
+                      }
+                    >
+                      <div className="album-polaroid">
+                        <div className="album-image">
+                          {first.mediaType ===
+                          'video' ? (
+                            <div className="album-video-thumb">
+                              <video
+                                src={
+                                  first.driveUrl
+                                }
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+
+                              <span className="video-badge">
+                                ▶ video
+                              </span>
+                            </div>
+                          ) : (
+                            <img
+                              src={`https://drive.google.com/thumbnail?id=${encodeURIComponent(
+                                first.driveFileId
+                              )}&sz=w1200`}
+                              alt={
+                                first.caption ||
+                                'Album'
+                              }
+                            />
+                          )}
+                        </div>
+
+                        <div className="album-writing">
+                          <strong>
+                            album{' '}
+                            {index + 1}
+                          </strong>
+
+                          <span>
+                            {album.items.length}{' '}
+                            {album.items.length ===
+                            1
+                              ? 'memory'
+                              : 'memories'}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/*
+       * ALBUM VIEWER
+       */}
+      {selectedAlbum &&
+        currentItem && (
+          <div className="viewer-veil">
+            <button
+              type="button"
+              className="viewer-close"
+              onClick={
+                closeViewer
+              }
+              aria-label="Close album"
+            >
+              ×
+            </button>
+
+            <button
+              type="button"
+              className="viewer-arrow viewer-left"
+              onClick={
+                previousItem
+              }
+              aria-label="Previous"
+            >
+              ‹
+            </button>
+
+            <div className="viewer-content">
+              <div className="viewer-polaroid">
+                <div className="viewer-media">
+                  {currentItem.mediaType ===
+                  'video' ? (
+                    <iframe
+                      src={`https://drive.google.com/file/d/${encodeURIComponent(
+                        currentItem.driveFileId
+                      )}/preview`}
+                      title={
+                        currentItem.originalName
+                      }
+                      allow="autoplay; fullscreen"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <img
+                      src={`https://drive.google.com/thumbnail?id=${encodeURIComponent(
+                        currentItem.driveFileId
+                      )}&sz=w1600`}
+                      alt={
+                        currentItem.caption ||
+                        'Memory'
+                      }
+                    />
+                  )}
+                </div>
+
+                <div className="viewer-caption">
+                  {currentItem.caption ? (
+                    <p>
+                      {currentItem.caption}
+                    </p>
+                  ) : (
+                    <p>
+                      {selectedAlbum.guest}'s
+                      little memory ♡
+                    </p>
+                  )}
+
+                  <span>
+                    {viewerIndex + 1} /{' '}
+                    {
+                      selectedAlbum
+                        .items.length
+                    }
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="viewer-arrow viewer-right"
+              onClick={
+                nextItem
+              }
+              aria-label="Next"
+            >
+              ›
+            </button>
+
+            <div className="viewer-bottom">
+              <span>
+                {selectedAlbum.guest}
+              </span>
+
+              {currentItem.mediaType ===
+                'video' && (
+                <span>
+                  🎥 video
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+      {/*
+       * ADD MEDIA MODAL
+       */}
       <div
         className={`veil ${
           open ? 'on' : ''
@@ -806,80 +1456,112 @@ const unknown = Object.keys(
           className="sheet"
           role="dialog"
           aria-modal="true"
-          aria-label="Add photos"
+          aria-label="Add photos and videos"
         >
-          <h3>add some photos</h3>
+          <h3>
+            add some memories
+          </h3>
 
           <p className="sub">
-            they'll go into your little
-            corner of the wall
+            everything you choose here becomes
+            one little album ♡
           </p>
 
           <label className="drop">
             <b>
-              choose photos
+              choose photos + videos
             </b>
 
             <small>
               {files.length > 0
                 ? `${files.length} ${
-                    files.length === 1
-                      ? 'photo'
-                      : 'photos'
-                  } picked — tap to swap`
-                : 'JPG · PNG · GIF · WEBP · up to 30 photos'}
+                    files.length ===
+                    1
+                      ? 'memory'
+                      : 'memories'
+                  } picked`
+                : 'photos up to 15 MB · videos up to 200 MB'}
             </small>
 
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               multiple
-              onChange={(event) => {
+              onChange={(
+                event
+              ) => {
                 pick(
-                  event.target.files
+                  event.target
+                    .files
                 );
 
-                /*
-                 * Allows selecting the same
-                 * file again later.
-                 */
                 event.currentTarget.value =
                   '';
               }}
             />
           </label>
 
-          {previews.length > 0 && (
+          {previews.length >
+            0 && (
             <div className="preview-grid">
               {previews.map(
-                (preview, index) => (
-                  <div
-                    className="preview-item"
-                    key={preview}
-                  >
-                    <img
-                      src={preview}
-                      alt={`Selected photo ${
-                        index + 1
-                      }`}
-                    />
+                (
+                  preview,
+                  index
+                ) => {
+                  const file =
+                    files[
+                      index
+                    ];
 
-                    <button
-                      type="button"
-                      className="preview-remove"
-                      onClick={() =>
-                        removeSelected(
-                          index
-                        )
-                      }
-                      aria-label={`Remove photo ${
-                        index + 1
-                      }`}
+                  const isVideo =
+                    file?.type.startsWith(
+                      'video/'
+                    );
+
+                  return (
+                    <div
+                      className="preview-item"
+                      key={preview}
                     >
-                      ×
-                    </button>
-                  </div>
-                )
+                      {isVideo ? (
+                        <video
+                          src={
+                            preview
+                          }
+                          muted
+                          playsInline
+                          controls
+                        />
+                      ) : (
+                        <img
+                          src={
+                            preview
+                          }
+                          alt={`Selected memory ${
+                            index +
+                            1
+                          }`}
+                        />
+                      )}
+
+                      <button
+                        type="button"
+                        className="preview-remove"
+                        onClick={() =>
+                          removeSelected(
+                            index
+                          )
+                        }
+                        aria-label={`Remove ${
+                          index + 1
+                        }`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                }
               )}
             </div>
           )}
@@ -896,7 +1578,9 @@ const unknown = Object.keys(
             type="text"
             maxLength={90}
             value={caption}
-            onChange={(event) =>
+            onChange={(
+              event
+            ) =>
               setCaption(
                 event.target.value
               )
@@ -911,15 +1595,21 @@ const unknown = Object.keys(
           <input
             type="text"
             readOnly
-            value={attendee || ''}
+            value={
+              attendee || ''
+            }
           />
 
           <div className="row">
             <button
               type="button"
               className="ghost"
-              onClick={resetModal}
-              disabled={busy}
+              onClick={
+                resetModal
+              }
+              disabled={
+                busy
+              }
             >
               back
             </button>
@@ -928,17 +1618,19 @@ const unknown = Object.keys(
               type="button"
               className="solid"
               disabled={
-                files.length === 0 ||
+                files.length ===
+                  0 ||
                 busy
               }
-              onClick={upload}
+              onClick={
+                upload
+              }
             >
               {busy
-                ? `putting up ${
-                    files.length
-                  }…`
-                : files.length > 1
-                  ? `put up ${files.length} photos`
+                ? `putting up ${files.length}…`
+                : files.length >
+                    1
+                  ? `put up ${files.length} memories`
                   : 'put it up'}
             </button>
           </div>
@@ -951,7 +1643,9 @@ const unknown = Object.keys(
 
       <div
         className={`toast ${
-          toast ? 'on' : ''
+          toast
+            ? 'on'
+            : ''
         }`}
       >
         {toast}

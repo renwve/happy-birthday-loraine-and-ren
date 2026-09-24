@@ -39,173 +39,190 @@ function getOAuthClient() {
 }
 
 function drive() {
-  const auth = getOAuthClient();
-
   return google.drive({
     version: 'v3',
-    auth,
+    auth: getOAuthClient(),
   });
 }
 
-/**
- * Find an attendee's folder inside the main Google Drive folder.
- *
- * If the folder doesn't exist yet, create it.
- */
-async function getOrCreateAttendeeFolder(attendee: string) {
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+function escapeDriveQueryString(value: string) {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'");
+}
 
-  if (!folderId) {
-    throw new Error('GOOGLE_DRIVE_FOLDER_ID is missing.');
+/**
+ * Find or create the guest's folder.
+ */
+export async function getOrCreateAttendeeFolder(
+  attendee: string
+) {
+  const parentId =
+    process.env.GOOGLE_DRIVE_FOLDER_ID;
+
+  if (!parentId) {
+    throw new Error(
+      'GOOGLE_DRIVE_FOLDER_ID is missing.'
+    );
+  }
+
+  const folderName = attendee.trim();
+
+  if (!folderName) {
+    throw new Error(
+      'Attendee name is missing.'
+    );
   }
 
   const api = drive();
 
-  // Clean the attendee name so it can safely be used
-  // as a Google Drive folder name.
-  const folderName = attendee.trim();
-
-  if (!folderName) {
-    throw new Error('Attendee name is missing.');
-  }
-
-  /*
-   * Search for an existing folder with this attendee name
-   * directly inside the main site folder.
-   *
-   * mimeType = Google Drive folder
-   * trashed = false = don't use deleted folders
-   */
-  const searchResponse = await api.files.list({
+  const search = await api.files.list({
     q: [
-      `'${folderId}' in parents`,
+      `'${parentId}' in parents`,
       `name = '${escapeDriveQueryString(folderName)}'`,
       `mimeType = 'application/vnd.google-apps.folder'`,
       `trashed = false`,
     ].join(' and '),
 
-    fields: 'files(id,name,parents)',
+    fields: 'files(id,name)',
     spaces: 'drive',
     pageSize: 1,
   });
 
-  const existingFolder = searchResponse.data.files?.[0];
+  const existing = search.data.files?.[0];
 
-  if (existingFolder?.id) {
+  if (existing?.id) {
     return {
-      id: existingFolder.id,
-      name: existingFolder.name ?? folderName,
+      id: existing.id,
+      name: existing.name ?? folderName,
     };
   }
 
-  /*
-   * Folder doesn't exist, so create it.
-   */
-  const createdFolder = await api.files.create({
+  const created = await api.files.create({
     requestBody: {
       name: folderName,
-      mimeType: 'application/vnd.google-apps.folder',
-      parents: [folderId],
+      mimeType:
+        'application/vnd.google-apps.folder',
+      parents: [parentId],
     },
 
     fields: 'id,name',
   });
 
-  if (!createdFolder.data.id) {
+  if (!created.data.id) {
     throw new Error(
       `Could not create Google Drive folder for ${folderName}.`
     );
   }
 
   return {
-    id: createdFolder.data.id,
-    name: createdFolder.data.name ?? folderName,
+    id: created.data.id,
+    name:
+      created.data.name ?? folderName,
   };
 }
 
 /**
- * Escape a string before putting it into a Google Drive
- * files.list query.
+ * Create one album folder inside a guest folder.
  */
-function escapeDriveQueryString(value: string) {
-  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+export async function createAlbumFolder(
+  attendee: string,
+  albumId: string
+) {
+  const attendeeFolder =
+    await getOrCreateAttendeeFolder(attendee);
+
+  const api = drive();
+
+  const albumName = `Album ${albumId}`;
+
+  const created = await api.files.create({
+    requestBody: {
+      name: albumName,
+      mimeType:
+        'application/vnd.google-apps.folder',
+      parents: [attendeeFolder.id],
+    },
+
+    fields: 'id,name',
+  });
+
+  if (!created.data.id) {
+    throw new Error(
+      'Google Drive could not create the album folder.'
+    );
+  }
+
+  return {
+    id: created.data.id,
+    name:
+      created.data.name ?? albumName,
+    attendeeFolderId:
+      attendeeFolder.id,
+  };
 }
 
 /**
- * Upload one photo to the selected attendee's Google Drive folder.
- *
- * The attendee folder lives inside GOOGLE_DRIVE_FOLDER_ID.
+ * Upload one image or video into an album folder.
  */
 export async function uploadToDrive(
   file: File,
-  attendee: string
+  attendee: string,
+  albumFolderId: string
 ) {
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-
-  if (!folderId) {
-    throw new Error('GOOGLE_DRIVE_FOLDER_ID is missing.');
+  if (!albumFolderId) {
+    throw new Error(
+      'Album folder is missing.'
+    );
   }
 
-  if (!attendee?.trim()) {
-    throw new Error('Attendee is missing.');
+  if (!file.type.startsWith('image/') &&
+      !file.type.startsWith('video/')) {
+    throw new Error(
+      `"${file.name}" is not an image or video.`
+    );
   }
 
   const api = drive();
 
-  /*
-   * Get the attendee's subfolder.
-   *
-   * Example:
-   *
-   * Main Folder
-   *   ├── Loraine
-   *   ├── Ren
-   *   └── Guest 3
-   */
-  const attendeeFolder = await getOrCreateAttendeeFolder(attendee);
+  const buffer = Buffer.from(
+    await file.arrayBuffer()
+  );
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  /*
-   * Clean the original filename.
-   */
   const safe = file.name.replace(
     /[^a-zA-Z0-9._-]/g,
     '_'
   );
 
-  /*
-   * Timestamp prevents two uploads with the same filename
-   * from accidentally having the same name.
-   */
   const stamp = new Date()
     .toISOString()
     .replace(/[:.]/g, '-');
 
-  const name = `${attendee} - ${stamp} - ${safe}`;
+  const name =
+    `${attendee} - ${stamp} - ${safe}`;
 
   try {
-    const { data } = await api.files.create({
-      requestBody: {
-        name,
+    const { data } =
+      await api.files.create({
+        requestBody: {
+          name,
+          parents: [albumFolderId],
+          mimeType:
+            file.type ||
+            'application/octet-stream',
+        },
 
-        /*
-         * IMPORTANT:
-         * This is now the attendee subfolder,
-         * NOT the main site folder.
-         */
-        parents: [attendeeFolder.id],
+        media: {
+          mimeType:
+            file.type ||
+            'application/octet-stream',
 
-        mimeType: file.type || 'image/jpeg',
-      },
+          body: Readable.from(buffer),
+        },
 
-      media: {
-        mimeType: file.type || 'image/jpeg',
-        body: Readable.from(buffer),
-      },
-
-      fields: 'id,name,webViewLink,webContentLink',
-    });
+        fields:
+          'id,name,webViewLink,webContentLink',
+      });
 
     if (!data.id) {
       throw new Error(
@@ -221,8 +238,9 @@ export async function uploadToDrive(
         data.webViewLink ??
         `https://drive.google.com/file/d/${data.id}/view`,
 
-      folderId: attendeeFolder.id,
-      folderName: attendeeFolder.name,
+      contentUrl:
+        data.webContentLink ??
+        `https://drive.google.com/file/d/${data.id}/view`,
     };
   } catch (error: any) {
     console.error(
@@ -242,14 +260,13 @@ export async function uploadToDrive(
   }
 }
 
-/**
- * Delete a photo from Google Drive.
- */
 export async function deleteFromDrive(
   fileId: string
 ) {
   if (!fileId) {
-    throw new Error('Google Drive file ID is missing.');
+    throw new Error(
+      'Google Drive file ID is missing.'
+    );
   }
 
   try {
