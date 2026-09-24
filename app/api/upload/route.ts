@@ -7,7 +7,7 @@ import { uploadToDrive } from '@/lib/google-drive';
 export const runtime = 'nodejs';
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
-const MAX_FILES = 30;
+const MAX_FILES = 200;
 
 export async function POST(request: Request) {
   try {
