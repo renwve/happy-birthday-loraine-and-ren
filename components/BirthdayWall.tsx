@@ -1493,7 +1493,89 @@ export default function BirthdayWall() {
   justify-content: center;
 }
 
+@media (max-width: 600px) {
+  /*
+   * MOBILE HERO
+   */
 
+  .hero {
+    padding: 48px 12px 16px;
+  }
+
+  /* "a whole wall just for them" */
+  .hero > .badge {
+    padding: 5px 10px;
+    gap: 6px;
+    font-size: 8px;
+    letter-spacing: .14em;
+    box-shadow: 2px 2px 0 var(--navy);
+  }
+
+  .hero > .badge svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /*
+   * BIGGER HAPPY BIRTHDAY
+   */
+  .hb1 {
+    font-size: clamp(3.2rem, 14vw, 5.2rem);
+  }
+
+  .hb2 {
+    font-size: clamp(3.8rem, 16vw, 6.2rem);
+  }
+
+  /*
+   * SMALLER "PIN IT UP" BOXES
+   */
+  .tape-row {
+    gap: 8px;
+    margin-top: 22px;
+  }
+
+  .tape-row .tape {
+    padding: 6px 10px;
+    font-size: .82rem;
+  }
+
+  /*
+   * SMALLER ADD PHOTO / VIDEO BUTTON
+   */
+  .cta-zone {
+    gap: 8px;
+    margin-top: 28px;
+  }
+
+  .cta {
+    font-size: 11px;
+    padding: 12px 23px;
+    border-width: 2px;
+    box-shadow:
+      0 0 0 2px var(--cream),
+      0 0 0 4px var(--navy),
+      3px 4px 0 rgba(54,83,154,.35);
+  }
+
+  .cta-note {
+    font-size: 8px;
+    letter-spacing: .16em;
+  }
+
+  /*
+   * SMALLER CATEGORY BOXES
+   */
+  .cat-row {
+    gap: 8px;
+    padding: 4px 8px 22px;
+  }
+
+  .cat-row .cat-chip {
+    padding: 6px 10px;
+    font-size: .82rem;
+  }
+}
       `}</style>
     </>
   );
