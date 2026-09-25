@@ -873,7 +873,7 @@ export default function BirthdayWall() {
 
             <div className="to-names">
               <span className="to-tag">
-                to the one and only
+                to the best,
               </span>
 
               <p className="names">
@@ -891,13 +891,12 @@ export default function BirthdayWall() {
               </span>
 
               <span className="tape">
-                bring a picture,
-                any picture
+                bring a memory,
+                any 
               </span>
 
               <span className="tape">
-                the goofier the
-                better
+                keep them here
               </span>
             </div>
 
@@ -929,7 +928,7 @@ export default function BirthdayWall() {
 
               <span className="cta-note">
                 {attendee
-                  ? `you are ${attendee} · anyone can add`
+                  ? `you are ${attendee} · come create a memory`
                   : 'choose an attendee above'}
               </span>
             </div>
@@ -997,7 +996,7 @@ export default function BirthdayWall() {
             }
           >
             all photos
-            &amp; videos
+            and videos
           </button>
 
           {ATTENDEES.map(
@@ -1331,7 +1330,7 @@ export default function BirthdayWall() {
                   .value
               )
             }
-            placeholder="the night we lost the car keys"
+            placeholder="blowing out the candles"
           />
 
           <label className="fld">
