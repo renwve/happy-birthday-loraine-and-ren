@@ -1519,11 +1519,11 @@ export default function BirthdayWall() {
    * BIGGER HAPPY BIRTHDAY
    */
   .hb1 {
-    font-size: clamp(3.2rem, 14vw, 5.2rem);
+    font-size: clamp(4.4rem, 18vw, 7.6rem);
   }
 
   .hb2 {
-    font-size: clamp(3.8rem, 16vw, 6.2rem);
+    font-size: clamp(5.2rem, 20vw, 8.8rem);
   }
 
   /*
