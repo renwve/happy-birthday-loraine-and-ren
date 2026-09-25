@@ -20,7 +20,6 @@ export async function GET() {
       .from('photos')
       .select(`
         id,
-        album_id,
         caption,
         original_name,
         mime_type,
@@ -37,7 +36,7 @@ export async function GET() {
           ascending: false,
         }
       )
-      .limit(1000);
+      .limit(5000);
 
     if (error) {
       throw error;
@@ -52,10 +51,8 @@ export async function GET() {
       photos:
         (data ?? []).map(
           (p: any) => ({
-            id: p.id,
-
-            albumId:
-              p.album_id,
+            id:
+              p.id,
 
             caption:
               p.caption,
@@ -97,12 +94,17 @@ export async function GET() {
           })
         ),
     });
-  } catch (e) {
+  } catch (error) {
+    console.error(
+      'PHOTOS LOAD ERROR:',
+      error
+    );
+
     return NextResponse.json(
       {
         error:
-          e instanceof Error
-            ? e.message
+          error instanceof Error
+            ? error.message
             : 'Could not load photos.',
       },
       { status: 500 }
