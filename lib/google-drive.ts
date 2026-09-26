@@ -47,24 +47,16 @@ function escapeDriveQuery(
   value: string
 ) {
   return value
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'");
+    .replace(
+      /\\/g,
+      '\\\\'
+    )
+    .replace(
+      /'/g,
+      "\\'"
+    );
 }
 
-/**
- * Finds the attendee's folder directly inside
- * the main Google Drive birthday folder.
- *
- * Example:
- *
- * Birthday Photos/
- *   ├── Loraine/
- *   ├── Ren/
- *   ├── Alexa/
- *   └── ...
- *
- * No album folders are created.
- */
 export async function getOrCreateAttendeeFolder(
   attendee: string
 ) {
@@ -143,8 +135,7 @@ export async function getOrCreateAttendeeFolder(
   }
 
   return {
-    id:
-      folderId,
+    id: folderId,
 
     name:
       created.data.name ??
@@ -152,15 +143,49 @@ export async function getOrCreateAttendeeFolder(
   };
 }
 
+export function safeDriveFileName(
+  name: string
+) {
+  return name
+    .replace(
+      /[^\w.\- ()]/g,
+      '_'
+    )
+    .replace(
+      /\s+/g,
+      ' '
+    )
+    .slice(
+      0,
+      180
+    );
+}
+
 /**
- * Uploads a photo or video DIRECTLY
- * into the attendee's folder.
+ * Uploads a Node.js stream directly to Google Drive.
  *
- * NO album folder is created.
+ * IMPORTANT:
+ *
+ * The file bytes are streamed.
+ * They are NOT converted to base64.
+ * They are NOT stored in Supabase.
+ *
+ * The uploaded Google Drive content therefore
+ * contains the same bytes as the original file.
  */
-export async function uploadToDrive(
-  file: File,
-  attendee: string
+export async function uploadStreamToDrive(
+  stream: Readable,
+  {
+    attendee,
+    fileName,
+    mimeType,
+    fileSize,
+  }: {
+    attendee: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
+  }
 ) {
   const drive =
     getDrive();
@@ -170,36 +195,16 @@ export async function uploadToDrive(
       attendee
     );
 
-  const originalName =
-    file.name ||
-    'upload';
-
-  const safeName =
-    originalName
-      .replace(
-        /[^\w.\- ()]/g,
-        '_'
-      )
-      .slice(0, 180);
-
-  const timestamp =
-    new Date()
-      .toISOString()
-      .replace(
-        /[:.]/g,
-        '-'
-      );
-
-  const finalName =
-    `${attendee} - ${timestamp} - ${safeName}`;
-
   /*
-   * Stream the file instead of manually
-   * buffering the entire video.
+   * Keep the original filename.
+   *
+   * We sanitize only characters that Google Drive
+   * cannot safely accept through our application.
    */
-  const stream =
-    Readable.fromWeb(
-      file.stream() as any
+  const finalName =
+    safeDriveFileName(
+      fileName ||
+        'upload'
     );
 
   const result =
@@ -215,7 +220,7 @@ export async function uploadToDrive(
 
       media: {
         mimeType:
-          file.type ||
+          mimeType ||
           'application/octet-stream',
 
         body:
@@ -223,7 +228,7 @@ export async function uploadToDrive(
       },
 
       fields:
-        'id,name,mimeType,webViewLink,webContentLink',
+        'id,name,mimeType,size,webViewLink,webContentLink,parents',
     });
 
   const fileId =
@@ -231,7 +236,26 @@ export async function uploadToDrive(
 
   if (!fileId) {
     throw new Error(
-      `Google Drive did not return a file ID for "${originalName}".`
+      `Google Drive did not return a file ID for "${fileName}".`
+    );
+  }
+
+  /*
+   * Drive reports the size of the bytes it actually
+   * received. This gives us a useful integrity check.
+   */
+  const driveSize =
+    Number(
+      result.data.size ??
+        fileSize
+    );
+
+  if (
+    Number.isFinite(fileSize) &&
+    driveSize !== fileSize
+  ) {
+    throw new Error(
+      `Google Drive received ${driveSize} bytes, but the original file was ${fileSize} bytes.`
     );
   }
 
@@ -245,7 +269,10 @@ export async function uploadToDrive(
 
     mimeType:
       result.data.mimeType ??
-      file.type,
+      mimeType,
+
+    size:
+      driveSize,
 
     url:
       result.data.webViewLink ??
@@ -260,8 +287,56 @@ export async function uploadToDrive(
 }
 
 /**
- * Deletes a photo/video from Google Drive.
+ * Existing server-side File uploader.
+ *
+ * Kept for compatibility with anything else in the app
+ * that might still call uploadToDrive().
  */
+export async function uploadToDrive(
+  file: File,
+  attendee: string
+) {
+  const stream =
+    Readable.fromWeb(
+      file.stream() as any
+    );
+
+  return uploadStreamToDrive(
+    stream,
+    {
+      attendee,
+
+      fileName:
+        file.name ||
+        'upload',
+
+      mimeType:
+        file.type ||
+        'application/octet-stream',
+
+      fileSize:
+        file.size,
+    }
+  );
+}
+
+export async function getDriveFile(
+  fileId: string
+) {
+  const drive =
+    getDrive();
+
+  const result =
+    await drive.files.get({
+      fileId,
+
+      fields:
+        'id,name,mimeType,size,webViewLink,webContentLink,parents',
+    });
+
+  return result.data;
+}
+
 export async function deleteFromDrive(
   fileId: string
 ) {

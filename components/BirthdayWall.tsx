@@ -27,7 +27,8 @@ const PALETTE = [
   '#243e8b',
 ];
 
-const MAX_FILES_PER_UPLOAD = 200;
+const MAX_FILES_PER_UPLOAD =
+  200;
 
 const BEIGE_NAMES = [
   'Loraine',
@@ -47,9 +48,12 @@ const CHIP_TILTS = [
   1.5,
 ];
 
-function tiltFor(index: number) {
+function tiltFor(
+  index: number
+) {
   return CHIP_TILTS[
-    index % CHIP_TILTS.length
+    index %
+      CHIP_TILTS.length
   ];
 }
 
@@ -57,7 +61,8 @@ function isVideo(
   photo: Photo
 ) {
   return (
-    photo.mediaType === 'video' ||
+    photo.mediaType ===
+      'video' ||
     photo.mimeType?.startsWith(
       'video/'
     )
@@ -159,21 +164,27 @@ function Motif({
     | 'star'
     | 'heart'
     | 'swirl';
-
   index: number;
 }) {
   const c =
     PALETTE[
-      index % PALETTE.length
+      index %
+        PALETTE.length
     ];
 
-  if (kind === 'star') {
+  if (
+    kind ===
+    'star'
+  ) {
     return (
       <Star fill={c} />
     );
   }
 
-  if (kind === 'heart') {
+  if (
+    kind ===
+    'heart'
+  ) {
     return (
       <Heart fill={c} />
     );
@@ -198,23 +209,21 @@ export default function BirthdayWall() {
   const [
     photos,
     setPhotos,
-  ] = useState<Photo[]>([]);
+  ] = useState<Photo[]>(
+    []
+  );
 
   const [
     open,
     setOpen,
   ] = useState(false);
 
-  /*
-   * MULTIPLE FILE UPLOAD
-   *
-   * One upload can contain up to
-   * 200 files.
-   */
   const [
     files,
     setFiles,
-  ] = useState<File[]>([]);
+  ] = useState<File[]>(
+    []
+  );
 
   const [
     previews,
@@ -264,13 +273,16 @@ export default function BirthdayWall() {
       const json =
         await response.json();
 
-      if (response.ok) {
+      if (
+        response.ok
+      ) {
         setAttendee(
           json.attendee
         );
 
         setPhotos(
-          json.photos || []
+          json.photos ||
+            []
         );
       } else {
         setMessage(
@@ -300,9 +312,6 @@ export default function BirthdayWall() {
       );
   }, []);
 
-  /*
-   * Clean up every object URL.
-   */
   useEffect(() => {
     return () => {
       previews.forEach(
@@ -315,11 +324,6 @@ export default function BirthdayWall() {
     };
   }, [previews]);
 
-  /*
-   * Filter by selected guest.
-   *
-   * There is NO total-count limit here.
-   */
   const visiblePhotos =
     useMemo(() => {
       if (
@@ -371,7 +375,9 @@ export default function BirthdayWall() {
             () => ({})
           );
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         setMessage(
           json.error ||
             'Could not choose attendee. Please try again.'
@@ -418,14 +424,14 @@ export default function BirthdayWall() {
     setPreviews([]);
   }
 
-  /*
-   * Pick up to 200 photos/videos.
-   */
   function pick(
     selectedFiles:
-      FileList | null
+      | FileList
+      | null
   ) {
-    if (!selectedFiles) {
+    if (
+      !selectedFiles
+    ) {
       return;
     }
 
@@ -435,16 +441,12 @@ export default function BirthdayWall() {
       );
 
     if (
-      incoming.length === 0
+      incoming.length ===
+      0
     ) {
       return;
     }
 
-    /*
-     * PER-UPLOAD LIMIT.
-     *
-     * This is NOT a wall limit.
-     */
     if (
       incoming.length >
       MAX_FILES_PER_UPLOAD
@@ -456,10 +458,9 @@ export default function BirthdayWall() {
       return;
     }
 
-    /*
-     * Validate every selected file.
-     */
-    for (const file of incoming) {
+    for (
+      const file of incoming
+    ) {
       const image =
         file.type.startsWith(
           'image/'
@@ -470,7 +471,10 @@ export default function BirthdayWall() {
           'video/'
         );
 
-      if (!image && !video) {
+      if (
+        !image &&
+        !video
+      ) {
         setMessage(
           `"${file.name}" is not a photo or video.`
         );
@@ -501,9 +505,6 @@ export default function BirthdayWall() {
       }
     }
 
-    /*
-     * Revoke previous preview URLs.
-     */
     previews.forEach(
       (preview) => {
         URL.revokeObjectURL(
@@ -558,9 +559,133 @@ export default function BirthdayWall() {
     );
   }
 
+  /**
+   * Sends one file to the external upload service in a
+   * single request.
+   *
+   * IMPORTANT:
+   *
+   * These bytes never go through the Vercel/Next.js
+   * API route — this request goes straight from the
+   * browser to the upload-service server, which then
+   * pushes it into Google Drive.
+   */
+  function uploadOneFile(
+    file: File,
+    uploadServiceUrl: string,
+    uploadToken: string,
+    attendeeName: string,
+    onProgress: (
+      percent: number
+    ) => void
+  ): Promise<{
+    id: string;
+    name: string;
+    mimeType: string;
+    size: number;
+  }> {
+    return new Promise(
+      (resolve, reject) => {
+        const formData =
+          new FormData();
+
+        formData.append(
+          'file',
+          file,
+          file.name
+        );
+
+        const xhr =
+          new XMLHttpRequest();
+
+        xhr.open(
+          'POST',
+          `${uploadServiceUrl}/upload`
+        );
+
+        xhr.setRequestHeader(
+          'Authorization',
+          `Bearer ${uploadToken}`
+        );
+
+        xhr.setRequestHeader(
+          'X-Attendee',
+          encodeURIComponent(
+            attendeeName
+          )
+        );
+
+        xhr.upload.onprogress = (
+          event
+        ) => {
+          if (
+            event.lengthComputable
+          ) {
+            const percent =
+              Math.round(
+                (event.loaded /
+                  event.total) *
+                  100
+              );
+
+            onProgress(
+              percent
+            );
+          }
+        };
+
+        xhr.onload = () => {
+          let json: any = {};
+
+          try {
+            json = JSON.parse(
+              xhr.responseText
+            );
+          } catch {
+            // handled by the status check below
+          }
+
+          if (
+            xhr.status < 200 ||
+            xhr.status >= 300 ||
+            !json.ok
+          ) {
+            reject(
+              new Error(
+                json.error ||
+                  `"${file.name}" failed during upload.`
+              )
+            );
+
+            return;
+          }
+
+          resolve({
+            id: json.fileId,
+            name: json.fileName,
+            mimeType:
+              json.mimeType,
+            size: json.fileSize,
+          });
+        };
+
+        xhr.onerror = () => {
+          reject(
+            new Error(
+              `"${file.name}" failed during upload. Check your connection and try again.`
+            )
+          );
+        };
+
+        xhr.send(formData);
+      }
+    );
+  }
+
   async function upload() {
     if (
-      files.length === 0
+      files.length ===
+      0
     ) {
       setMessage(
         'Choose at least one photo or video first.'
@@ -577,10 +702,6 @@ export default function BirthdayWall() {
       return;
     }
 
-    /*
-     * This is the ONLY upload count
-     * limit.
-     */
     if (
       files.length >
       MAX_FILES_PER_UPLOAD
@@ -596,67 +717,186 @@ export default function BirthdayWall() {
 
     setMessage(
       `Putting up ${files.length} ${
-        files.length === 1
+        files.length ===
+        1
           ? 'memory'
           : 'memories'
       }…`
     );
 
     try {
-      const form =
-        new FormData();
+      let completed = 0;
 
-      /*
-       * Every selected file uses
-       * the SAME "files" field.
-       *
-       * The API uses form.getAll('files').
-       */
-      files.forEach(
-        (file) => {
-          form.append(
-            'files',
-            file
+      for (
+        const file of files
+      ) {
+        /*
+         * STEP 1
+         *
+         * Ask Next.js to validate the upload
+         * and return the external upload service URL.
+         *
+         * NO FILE BYTES are sent here.
+         */
+        const initResponse =
+          await fetch(
+            '/api/upload',
+            {
+              method:
+                'POST',
+
+              headers: {
+                'content-type':
+                  'application/json',
+              },
+
+              body:
+                JSON.stringify({
+                  fileName:
+                    file.name,
+
+                  mimeType:
+                    file.type ||
+                    'application/octet-stream',
+
+                  fileSize:
+                    file.size,
+                }),
+            }
+          );
+
+        const initJson =
+          await initResponse
+            .json()
+            .catch(
+              () => ({})
+            );
+
+        if (
+          !initResponse.ok
+        ) {
+          throw new Error(
+            initJson.error ||
+              `Could not prepare "${file.name}".`
           );
         }
-      );
 
-      form.append(
-        'caption',
-        caption
-      );
+        const uploadServiceUrl =
+          initJson.uploadServiceUrl;
 
-      const response =
-        await fetch(
-          '/api/upload',
-          {
-            method:
-              'POST',
-            body:
-              form,
-          }
-        );
+        const uploadToken =
+          initJson.uploadToken;
 
-      const json =
-        await response
-          .json()
-          .catch(
-            () => ({})
+        if (
+          !uploadServiceUrl ||
+          !uploadToken
+        ) {
+          throw new Error(
+            'Upload service was not configured correctly.'
+          );
+        }
+
+        /*
+         * STEP 2
+         *
+         * Send the actual bytes directly to
+         * the external upload service.
+         *
+         * Vercel never receives these bytes.
+         */
+        const driveFile =
+          await uploadOneFile(
+            file,
+            uploadServiceUrl,
+            uploadToken,
+            attendee,
+            (percent) => {
+              setMessage(
+                `putting up ${file.name}… ${percent}%`
+              );
+            }
           );
 
-      if (!response.ok) {
-        throw new Error(
-          json.error ||
-            'Upload failed.'
+        if (
+          !driveFile?.id
+        ) {
+          throw new Error(
+            `Google Drive uploaded "${file.name}" but did not return a file ID.`
+          );
+        }
+
+        /*
+         * STEP 4
+         *
+         * Save ONLY metadata in Supabase.
+         */
+        const finalizeResponse =
+          await fetch(
+            '/api/upload/finalize',
+            {
+              method:
+                'POST',
+
+              headers: {
+                'content-type':
+                  'application/json',
+              },
+
+              body:
+                JSON.stringify({
+                  fileId:
+                    driveFile.id,
+
+                  fileName:
+                    file.name,
+
+                  mimeType:
+                    file.type ||
+                    'application/octet-stream',
+
+                  fileSize:
+                    file.size,
+
+                  caption,
+                }),
+            }
+          );
+
+        const finalizeJson =
+          await finalizeResponse
+            .json()
+            .catch(
+              () => ({})
+            );
+
+        if (
+          !finalizeResponse.ok
+        ) {
+          throw new Error(
+            finalizeJson.error ||
+              `"${file.name}" uploaded to Drive but could not be saved.`
+          );
+        }
+
+        completed++;
+
+        setMessage(
+          `Putting up ${completed}/${files.length} ${
+            files.length ===
+            1
+              ? 'memory'
+              : 'memories'
+          }…`
         );
       }
 
       resetModal();
 
       setToast(
-        json.count === 1
+        completed ===
+          1
           ? 'it is up ♡'
-          : `${json.count} memories are up ♡`
+          : `${completed} memories are up ♡`
       );
 
       await load();
@@ -668,9 +908,13 @@ export default function BirthdayWall() {
         2500
       );
     } catch (error) {
+      console.error(
+        'UPLOAD ERROR:',
+        error
+      );
+
       setMessage(
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'That did not save. Try once more.'
       );
@@ -716,7 +960,9 @@ export default function BirthdayWall() {
           () => ({})
         );
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       setToast(
         json.error ||
           'Could not remove it'
@@ -822,7 +1068,8 @@ export default function BirthdayWall() {
               <div
                 key={index}
                 className={`sticker s${
-                  index + 1
+                  index +
+                  1
                 }`}
               >
                 <Motif
@@ -892,7 +1139,7 @@ export default function BirthdayWall() {
 
               <span className="tape">
                 bring a memory,
-                any 
+                any
               </span>
 
               <span className="tape">
@@ -905,7 +1152,9 @@ export default function BirthdayWall() {
                 type="button"
                 className="cta"
                 onClick={() => {
-                  if (!attendee) {
+                  if (
+                    !attendee
+                  ) {
                     setMessage(
                       'Choose an attendee first.'
                     );
@@ -913,9 +1162,7 @@ export default function BirthdayWall() {
                     return;
                   }
 
-                  setMessage(
-                    ''
-                  );
+                  setMessage('');
 
                   setOpen(
                     true
@@ -1166,10 +1413,11 @@ export default function BirthdayWall() {
         </p>
       </footer>
 
-      {/* ADD PHOTO / VIDEO MODAL */}
       <div
         className={`veil ${
-          open ? 'on' : ''
+          open
+            ? 'on'
+            : ''
         }`}
         onClick={(
           event
@@ -1226,15 +1474,10 @@ export default function BirthdayWall() {
               ) => {
                 pick(
                   event
-                    .target
+                    .currentTarget
                     .files
                 );
 
-                /*
-                 * Allows selecting
-                 * the same files
-                 * again later.
-                 */
                 event.currentTarget.value =
                   '';
               }}
@@ -1396,85 +1639,64 @@ export default function BirthdayWall() {
         {toast}
       </div>
 
-      {/*
-       * Small targeted style overrides.
-       *
-       * These don't replace your existing
-       * birthday-wall styling.
-       */}
       <style jsx global>{`
-        /*
-         * Loraine + Ren use the same beige.
-         */
-.cat-chip-beige {
-  background: #F6F6DE !important;
-  color: #243e8b !important;
-  border-color: #C4A97E !important;
-}
+        .cat-chip-beige {
+          background: #F6F6DE !important;
+          color: #243e8b !important;
+          border-color: #C4A97E !important;
+        }
 
-.cat-chip-beige.active {
-  background: #F6F6DE !important;
-  border-color: #C4A97E !important;
-}
+        .cat-chip-beige.active {
+          background: #F6F6DE !important;
+          border-color: #C4A97E !important;
+        }
 
         .attendee-button-beige {
           background: #AED8E8 !important;
           color: #243e8b !important;
         }
 
-        /*
-         * Make the empty guest box a real,
-         * full container instead of allowing
-         * it to collapse inside the masonry.
-         */
-.guest-empty {
-  width: 100%;
-  min-height: 260px;
-  min-width: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 48px 32px;
-  margin: 12px auto 28px;
-  grid-column: 1 / -1;
-  break-inside: avoid;
-}
+        .guest-empty {
+          width: 100%;
+          min-height: 260px;
+          min-width: 0;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 48px 32px;
+          margin: 12px auto 28px;
+          grid-column: 1 / -1;
+          break-inside: avoid;
+        }
 
-        /*
-         * Slightly smaller polaroids.
-         */
-.masonry .card {
-  width: 100%;
-  max-width: 220px;
-  height: auto !important;
-  min-height: 0 !important;
-  margin-left: auto;
-  margin-right: auto;
-  break-inside: avoid;
-}
+        .masonry .card {
+          width: 100%;
+          max-width: 220px;
+          height: auto !important;
+          min-height: 0 !important;
+          margin-left: auto;
+          margin-right: auto;
+          break-inside: avoid;
+        }
 
-.masonry .card .frame {
-  width: 100%;
-  height: auto !important;
-  min-height: 0 !important;
-}
+        .masonry .card .frame {
+          width: 100%;
+          height: auto !important;
+          min-height: 0 !important;
+        }
 
-.masonry .card .frame img,
-.masonry .card .frame video {
-  width: 100%;
-  height: auto !important;
-  max-width: 100%;
-  object-fit: contain !important;
-  display: block;
-}
+        .masonry .card .frame img,
+        .masonry .card .frame video {
+          width: 100%;
+          height: auto !important;
+          max-width: 100%;
+          object-fit: contain !important;
+          display: block;
+        }
 
-        /*
-         * Keep the upload preview usable when
-         * many files are selected.
-         */
         .preview-grid {
           max-height: 310px;
           overflow-y: auto;
@@ -1486,95 +1708,79 @@ export default function BirthdayWall() {
           object-fit: cover;
           display: block;
         }
-          .masonry {
-  display: grid;
-  justify-items: center;
-  justify-content: center;
-}
 
-@media (max-width: 600px) {
-  /*
-   * MOBILE HERO
-   */
+        .masonry {
+          display: grid;
+          justify-items: center;
+          justify-content: center;
+        }
 
-  .hero {
-    padding: 48px 12px 16px;
-  }
+        @media (max-width: 600px) {
+          .hero {
+            padding: 48px 12px 16px;
+          }
 
-  /* "a whole wall just for them" */
-  .hero > .badge {
-    padding: 5px 10px;
-    gap: 6px;
-    font-size: 8px;
-    letter-spacing: .14em;
-    box-shadow: 2px 2px 0 var(--navy);
-  }
+          .hero > .badge {
+            padding: 5px 10px;
+            gap: 6px;
+            font-size: 8px;
+            letter-spacing: .14em;
+            box-shadow: 2px 2px 0 var(--navy);
+          }
 
-  .hero > .badge svg {
-    width: 12px;
-    height: 12px;
-  }
+          .hero > .badge svg {
+            width: 12px;
+            height: 12px;
+          }
 
-  /*
-   * BIGGER HAPPY BIRTHDAY
-   */
-  .hb1 {
-    font-size: clamp(4.4rem, 18vw, 7.6rem);
-  }
+          .hb1 {
+            font-size: clamp(4.4rem, 18vw, 7.6rem);
+          }
 
-  .hb2 {
-    font-size: clamp(5.2rem, 20vw, 8.8rem);
-  }
+          .hb2 {
+            font-size: clamp(5.2rem, 20vw, 8.8rem);
+          }
 
-  /*
-   * SMALLER "PIN IT UP" BOXES
-   */
-  .tape-row {
-    gap: 8px;
-    margin-top: 22px;
-  }
+          .tape-row {
+            gap: 8px;
+            margin-top: 22px;
+          }
 
-  .tape-row .tape {
-    padding: 6px 10px;
-    font-size: .82rem;
-  }
+          .tape-row .tape {
+            padding: 6px 10px;
+            font-size: .82rem;
+          }
 
-  /*
-   * SMALLER ADD PHOTO / VIDEO BUTTON
-   */
-  .cta-zone {
-    gap: 8px;
-    margin-top: 28px;
-  }
+          .cta-zone {
+            gap: 8px;
+            margin-top: 28px;
+          }
 
-  .cta {
-    font-size: 11px;
-    padding: 12px 23px;
-    border-width: 2px;
-    box-shadow:
-      0 0 0 2px var(--cream),
-      0 0 0 4px var(--navy),
-      3px 4px 0 rgba(54,83,154,.35);
-  }
+          .cta {
+            font-size: 11px;
+            padding: 12px 23px;
+            border-width: 2px;
+            box-shadow:
+              0 0 0 2px var(--cream),
+              0 0 0 4px var(--navy),
+              3px 4px 0 rgba(54,83,154,.35);
+          }
 
-  .cta-note {
-    font-size: 8px;
-    letter-spacing: .16em;
-  }
+          .cta-note {
+            font-size: 8px;
+            letter-spacing: .16em;
+          }
 
-  /*
-   * SMALLER CATEGORY BOXES
-   */
-  .cat-row {
-    gap: 8px;
-    padding: 4px 8px 22px;
-  }
+          .cat-row {
+            gap: 8px;
+            padding: 4px 8px 22px;
+          }
 
-  .cat-row .cat-chip {
-    padding: 6px 10px;
-    font-size: .82rem;
-  }
-}
+          .cat-row .cat-chip {
+            padding: 6px 10px;
+            font-size: .82rem;
+          }
+        }
       `}</style>
     </>
   );

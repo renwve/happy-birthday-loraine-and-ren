@@ -2,12 +2,33 @@ import { NextResponse } from 'next/server';
 
 import {
   supabaseAdmin,
-} from '@/lib/supabase-admin';
+} from '@/lib/supabase-client';
 
 import {
   currentAttendee,
 } from '@/lib/attendee-cookie';
 
+export const runtime = 'nodejs';
+
+/**
+ * GET /api/photos
+ *
+ * Loads the wall.
+ *
+ * IMPORTANT:
+ * The actual image/video files are NOT stored here.
+ *
+ * Supabase only stores the small database record:
+ *
+ * - caption
+ * - original name
+ * - mime type
+ * - media type
+ * - Google Drive file ID
+ * - Google Drive URL
+ * - attendee
+ * - timestamp
+ */
 export async function GET() {
   try {
     const db =
@@ -107,7 +128,9 @@ export async function GET() {
             ? error.message
             : 'Could not load photos.',
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }

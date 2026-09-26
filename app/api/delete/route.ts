@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { currentAttendee } from '@/lib/attendee-cookie';
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { supabaseAdmin } from '@/lib/supabase-client';
 import { deleteFromDrive } from '@/lib/google-drive';
 
 export const runtime = 'nodejs';
